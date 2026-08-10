@@ -6,6 +6,7 @@ import { AccessRefused } from '@/components/layout/access-refused'
 import { PortalShell } from '@/components/layout/portal-shell'
 import { BROKER_ROLES } from '@/lib/auth/roles'
 import { db } from '@/lib/db'
+import { uploadRequestCeilingMb } from '@/lib/env'
 import { evaluateCompleteness, loadApplicationDetail } from '@/lib/applications/completeness'
 import { isApplicationStep, stepsFor, type ApplicationStep } from '@/lib/applications/steps'
 import { ruleSet } from '@/lib/rules'
@@ -330,6 +331,11 @@ async function renderStep({
         <DocumentsStep
           applicationId={id}
           continueHref={`/application/${id}/declarations`}
+          // The host's request-body ceiling, not a rule. The per-item limits
+          // below still come from DOC_CHECKLIST and are still enforced on the
+          // server; this only lets the step say so before a phone spends two
+          // minutes uploading something the platform will reject at the edge.
+          requestCeilingMb={uploadRequestCeilingMb}
           items={withDocuments.map((item) => ({
             key: item.key,
             label: locale === 'ar' ? item.payload.labelAr : item.payload.labelEn,

@@ -19,6 +19,16 @@ import { EventTrail } from '@/components/gov/event-trail'
 import { DeliveryForm, FeesForm, IssueCardForm } from '@/components/gov/issuance-forms'
 
 /**
+ * Issuing the card starts Chromium and renders a PDF, and a Server Action runs
+ * inside the function of the page that invoked it — so the ceiling that matters
+ * is this page's. A serverless default of ten or fifteen seconds is not enough
+ * for a cold start that has to unpack a browser first, and the failure it
+ * produces is a truncated request with no error anyone can act on. Sixty is the
+ * most a Vercel Hobby function allows and is ample for a warm one.
+ */
+export const maxDuration = 60
+
+/**
  * Fees, the card, and delivery — REQ-REG-050 steps 4, 5, and 6.
  *
  * One screen, because it is one visit to the counter. Which of the three forms

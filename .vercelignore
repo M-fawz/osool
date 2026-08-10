@@ -1,0 +1,21 @@
+# What the hosted build has no use for.
+#
+# Nothing here is referenced by next.config.ts, the Prisma schema, or any
+# import path — these are the design tooling, the local database, the local
+# object store, and the proof artefacts, and together they are most of the
+# repository by size. Excluding them shortens every deployment.
+#
+# Do not add src/, prisma/, messages/, public/, or package-lock.json.
+
+.claude/
+.impeccable/
+.postgres/
+.storage/
+.proof/
+.next/
+docs/
+BUILD-PROMPT.md
+DESIGN.md
+PRODUCT.md
+README-FIRST.md
+docker-compose.yml

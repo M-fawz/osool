@@ -1,7 +1,7 @@
 import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { db } from '@/lib/db'
-import { env } from '@/lib/env'
+import { env, trustedOrigins } from '@/lib/env'
 import { sendEmail } from '@/lib/email'
 import {
   brokerVerificationEmail,
@@ -126,9 +126,27 @@ export const auth = betterAuth({
     // Sessions are the one thing this product deletes; see the Session model.
     // The audit event is written before the row goes.
     database: { generateId: false },
+
+    // Better Auth already marks cookies Secure when NODE_ENV is production.
+    // This states it from the address instead, which is the thing that actually
+    // decides whether a Secure cookie can be set at all: a Secure cookie sent
+    // over http is dropped by the browser silently, and the symptom is a
+    // sign-in that returns 200 and leaves the user signed out.
+    useSecureCookies: env.BETTER_AUTH_URL.startsWith('https://'),
+
+    defaultCookieAttributes: {
+      httpOnly: true,
+      // Lax, not Strict. The activation and password-reset links arrive from an
+      // email client, which is a cross-site navigation; under Strict the cookie
+      // set at the end of that flow would not be sent on the next request and
+      // the employee would land back on the sign-in screen.
+      sameSite: 'lax',
+    },
   },
 
-  trustedOrigins: [env.APP_URL, env.BETTER_AUTH_URL],
+  // Derived, never a literal: production, each preview branch, and each
+  // immutable deployment address are all legitimate origins. See src/lib/env.ts.
+  trustedOrigins,
 })
 
 export type Auth = typeof auth

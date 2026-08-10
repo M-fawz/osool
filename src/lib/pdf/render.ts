@@ -29,12 +29,83 @@ import { join } from 'node:path'
  * layout dialect.
  */
 
-let browserPromise: Promise<import('playwright').Browser> | null = null
+/**
+ * Where the Chromium binary comes from, which differs by host.
+ *
+ * A container built from this repository runs `playwright install chromium`
+ * and gets the browser Playwright expects, in Playwright's own cache. A
+ * serverless function has neither: its filesystem is read-only apart from
+ * `/tmp`, nothing ran an install step inside it, and the ~300 MB browser
+ * Playwright downloads would not fit in a function anyway.
+ *
+ * `@sparticuz/chromium` exists for exactly that case — a Chromium built for
+ * AWS Lambda, shipped brotli-compressed inside the deployment and unpacked to
+ * `/tmp` on first use. `playwright-core` then drives it: same API, same
+ * HarfBuzz shaping, no bundled browser of its own.
+ *
+ * Detection is by platform rather than by configuration, because getting it
+ * wrong is silent until the first card is issued. `PDF_RENDERER` overrides it
+ * for the case the detection cannot see — a container that happens to run on
+ * Lambda, or a local reproduction of the serverless path.
+ */
+type Renderer = 'bundled-chromium' | 'serverless-chromium'
+
+function selectedRenderer(): Renderer {
+  const override = process.env.PDF_RENDERER
+  if (override === 'bundled-chromium' || override === 'serverless-chromium') return override
+  const serverless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
+  return serverless ? 'serverless-chromium' : 'bundled-chromium'
+}
+
+let browserPromise: Promise<import('playwright-core').Browser> | null = null
+
+async function launch(): Promise<import('playwright-core').Browser> {
+  // Shared by both paths. --no-sandbox because neither a hardened container
+  // nor a Lambda gives the browser the user namespaces its sandbox needs, and
+  // the only content it ever loads is HTML this application generated.
+  const baseArgs = ['--no-sandbox', '--font-render-hinting=none']
+
+  if (selectedRenderer() === 'serverless-chromium') {
+    const [{ default: chromiumPack }, { chromium }] = await Promise.all([
+      import('@sparticuz/chromium'),
+      import('playwright-core'),
+    ])
+
+    // No WebGL. A registration card is shaped text on a white page, and leaving
+    // the graphics stack on costs an extra archive to unpack into /tmp on every
+    // cold start for something nothing here draws.
+    chromiumPack.setGraphicsMode = false
+
+    const executablePath = await chromiumPack.executablePath()
+    if (!executablePath) {
+      throw new Error(
+        'The serverless Chromium build did not unpack, so no PDF can be rendered. ' +
+          'Check the function has writable /tmp space and at least 1024 MB of memory.',
+      )
+    }
+
+    return chromium.launch({
+      executablePath,
+      args: [...chromiumPack.args, ...baseArgs],
+      headless: true,
+    })
+  }
+
+  // The container and laptop path. `playwright`, not `playwright-core`: it is
+  // the package whose install step put the browser on disk.
+  const { chromium } = await import('playwright')
+  return chromium.launch({ args: baseArgs })
+}
 
 async function browser() {
   if (!browserPromise) {
-    const { chromium } = await import('playwright')
-    browserPromise = chromium.launch({ args: ['--no-sandbox', '--font-render-hinting=none'] })
+    // Cleared on failure, so a cold start that could not reach Chromium does
+    // not poison every later request on the same warm instance with a rejected
+    // promise nobody can retry.
+    browserPromise = launch().catch((error) => {
+      browserPromise = null
+      throw error
+    })
   }
   return browserPromise
 }

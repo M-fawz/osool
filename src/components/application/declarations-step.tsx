@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { useLocale, useTranslations } from 'next-intl'
+import { useTranslations } from 'next-intl'
 import { useRouter } from '@/i18n/navigation'
 import { cn } from '@/lib/cn'
 import { setDeclarationAction } from '@/app/[locale]/application/actions'
@@ -131,7 +131,6 @@ function DeclarationBody({
   item: DeclarationView
   children: React.ReactNode
 }) {
-  const t = useTranslations('apply')
 
   return (
     <div className="px-4 py-4">

@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { useLocale, useTranslations } from 'next-intl'
+import { useTranslations } from 'next-intl'
 import type { BrokerType } from '@prisma/client'
 import { cn } from '@/lib/cn'
 import {

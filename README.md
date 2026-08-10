@@ -173,8 +173,11 @@ npx tsx .proof/mobile-screens.ts   # screenshots all eight portal steps at 360px
 | `npm run dev` | Start the application on <http://localhost:3000> |
 | `npm run build` | Production build |
 | `npm run typecheck` | TypeScript, no emit |
+| `npm run lint` | ESLint |
+| `npm run ci` | Everything CI runs that needs no database: typecheck, lint, no-deletes, build |
 | `npm run db:start` / `db:stop` / `db:status` | Control the local database |
 | `npm run db:migrate` | Create and apply a migration after editing the schema |
+| `npm run db:deploy` | Apply pending migrations to a deployed database. Additive; never resets |
 | `npm run db:seed` | Re-seed transitions and rule sets (idempotent, never deletes) |
 | `npm run db:studio` | Browse the database in a GUI |
 | `npm run admin:create` | Create the first `SYSTEM_ADMIN` |
@@ -274,6 +277,68 @@ CSS logical properties, so one stylesheet serves both directions.
 
 ---
 
+## Deploying it · النشر
+
+Full guide, in Arabic and English: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**. The short version.
+
+### ما يحدث عند الدفع إلى main
+
+```
+git add .
+git commit -m "…"
+git push origin main
+```
+
+ثم، بلا أي خطوة يدوية:
+
+```
+GitHub (main)  →  Vercel يلتقط الدفعة  →  npm ci  →  prisma generate
+                                              ↓
+                                    prisma migrate deploy   (الإنتاج فقط، إضافي لا يحذف)
+                                              ↓
+                                          next build
+                                              ↓
+                  نجح: الموقع يُحدَّث   ·   فشل: الإصدار السابق يبقى يعمل كما هو
+```
+
+**إن فشل البناء لا يتأثر الإنتاج إطلاقاً.** السبب يُقرأ في
+Vercel → المشروع → Deployments → آخر عملية → Build Logs.
+
+### Before the first deployment
+
+Six things, once. All of them are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) with the reasons:
+
+1. a PostgreSQL for production, and a **separate** one for previews;
+2. a private S3-compatible bucket for documents;
+3. a Resend key and a verified sending domain;
+4. import the repository as a Vercel project — `vercel.json` carries the build configuration, so
+   nothing needs setting in the dashboard except the variables;
+5. the environment variables, per environment — the table is in the deployment guide, and no value
+   belongs in this repository;
+6. `npm run admin:create` against production, to create the first real `SYSTEM_ADMIN`.
+
+The development accounts listed above **cannot** reach a deployment: both seed scripts refuse a
+non-local database and refuse `NODE_ENV=production`, in code rather than in a comment.
+
+### Two commands, and the difference between them
+
+| Command | Runs where | What it produces |
+|---|---|---|
+| `npm run build` | laptop, container, CI | `next build`, plus `.next/standalone` — a plain Node server, no host assumed |
+| `npm run vercel-build` | Vercel | checks the configuration, generates the Prisma client, migrates production, then builds |
+
+`npm` prefers `vercel-build` over `build` where it exists, which is how the hosted path stays out of
+the container path. 02-SYSTEM-ARCHITECTURE §10 decision 1 — host-agnostic on purpose.
+
+### CI
+
+`.github/workflows/ci.yml` runs on every push and pull request: types, lint, the no-deletes control,
+a production build, and — against a throwaway PostgreSQL — the migrations, the seed's idempotence,
+the audit chain, and the tamper-detection proof. **It does not deploy.** Vercel does that, and two
+systems publishing the same commit is how a pipeline stops being trusted.
+
+---
+
 ## The documents that govern this
 
 | Read | When |
@@ -286,6 +351,7 @@ CSS logical properties, so one stylesheet serves both directions.
 | [docs/PHASE-1-REPORT.md](docs/PHASE-1-REPORT.md) | What Phase 1 built, decided, and left |
 | [docs/USER-GUIDE-AR.md](docs/USER-GUIDE-AR.md) | دليل الاستخدام — one section per role, in Arabic |
 | [docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md) | A ten-minute walkthrough for a government stakeholder |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | النشر — GitHub → Vercel, environment variables, migrations |
 
 `docs/01-LEGAL-REFERENCE.md` is the source of truth for every rule in the system. When counsel
 confirms or corrects something, that file is updated **first**, then the code. Every enforcement
@@ -303,4 +369,6 @@ Next.js 15 (App Router, TypeScript) · PostgreSQL · Prisma · Zod · Better Aut
 next-intl · Chromium for PDF · S3-compatible object storage in production, local disk in development.
 
 Host-agnostic on purpose: no Vercel-only primitive is used, because a government deployment may
-require in-country hosting.
+require in-country hosting. `npm run build` produces a self-contained Node server in
+`.next/standalone` that runs in any container; the Vercel path is additive and lives in one script
+and one config file. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).

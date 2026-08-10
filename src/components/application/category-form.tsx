@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { useLocale, useTranslations } from 'next-intl'
+import { useTranslations } from 'next-intl'
 import type { BrokerCategory, BrokerType } from '@prisma/client'
 import { saveCategoryAction } from '@/app/[locale]/application/actions'
 import { Field, Input } from '@/components/ui/form'
@@ -68,7 +68,6 @@ export function CategoryForm({
   const t = useTranslations('apply')
   const [capital, setCapital] = React.useState<number | null>(defaults.paidUpCapital)
   const [category, setCategory] = React.useState<BrokerCategory | null>(defaults.requestedCategory)
-  const locale = useLocale() as 'ar' | 'en'
 
   const chosen = bands.find((b) => b.key === category)
   const shortfall =

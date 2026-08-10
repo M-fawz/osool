@@ -1,0 +1,145 @@
+name: CI
+
+# What this is for, and what it deliberately is not.
+#
+# Vercel already builds and deploys every push to main through its own Git
+# integration. This workflow does not deploy anything and must not start to:
+# two systems racing to publish the same commit is how a deployment pipeline
+# becomes something nobody trusts. What Vercel does not do is tell you a commit
+# is bad *before* it becomes the production build, and it does not run a
+# database against a real PostgreSQL. That is this file's whole job.
+#
+# Two jobs, because they fail for different reasons and it should be obvious
+# which happened:
+#
+#   checks     — types, lint, the no-deletes control, and the production build.
+#   database   — the migrations apply from empty, the guardrails they install
+#                really refuse a DELETE, the seed is idempotent, and the audit
+#                chain verifies.
+#
+# Everything here runs against a throwaway PostgreSQL created for the run and
+# discarded with it. Nothing in this workflow can reach a deployed database:
+# no deployment secret is exposed to it, and the seeds refuse a non-local host
+# in their own code.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A second push supersedes the first. There is no value in finishing a run for
+# a commit that is already three commits behind.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Types, lint, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # Enough to satisfy src/lib/env.ts at build time and nothing more. These
+      # are throwaway values for a build that never serves a request and never
+      # opens a connection — `next build` needs DATABASE_URL to be a valid URL,
+      # not a reachable database. Real secrets live in Vercel, not here.
+      DATABASE_URL: postgresql://osool:osool@localhost:5432/osool?schema=public
+      BETTER_AUTH_SECRET: ci-only-not-a-secret-0000000000000000
+      PII_ENCRYPTION_KEY: ci-only-not-a-secret-0000000000000000
+      APP_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      # `npm ci` and not `npm install`: it installs exactly the lockfile and
+      # fails if package.json and the lockfile disagree, which is the same
+      # thing Vercel's install step does.
+      - name: Install
+        run: npm ci
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: ESLint
+        run: npm run lint
+
+      # CLAUDE.md rule 2. A static search, so it costs nothing and catches a
+      # destructive write at review time rather than in production.
+      - name: No destructive deletes
+        run: npm run audit:no-deletes
+
+      - name: Production build
+        run: npm run build
+
+  database:
+    name: Migrations, guardrails, audit chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: osool
+          POSTGRES_PASSWORD: osool
+          POSTGRES_DB: osool
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://osool:osool@localhost:5432/osool?schema=public
+      BETTER_AUTH_SECRET: ci-only-not-a-secret-0000000000000000
+      PII_ENCRYPTION_KEY: ci-only-not-a-secret-0000000000000000
+      APP_URL: http://localhost:3000
+      NODE_ENV: development
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # The real deployment path, against an empty database. If a migration is
+      # malformed or out of order, this is where it is found — not during the
+      # build that was about to become production.
+      - name: Apply migrations
+        run: npm run db:deploy
+
+      - name: Seed the rule sets
+        run: npm run db:seed
+
+      # Idempotent by design; running it twice is the assertion.
+      - name: Seed again — it must be idempotent
+        run: npm run db:seed
+
+      - name: Audit chain verifies
+        run: npm run audit:verify
+
+      # Proves the versioned rules engine answers as-of a date, against the
+      # real database rather than a fixture.
+      - name: Rules engine
+        run: npm run proof:rules
+
+      # Attacks the hash chain four ways and requires each to be detected.
+      - name: Audit trail resists tampering
+        run: npm run proof:audit

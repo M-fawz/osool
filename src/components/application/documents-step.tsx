@@ -36,6 +36,21 @@ import { WhyWeAsk } from './why-we-ask'
  *
  * Drag and drop is added on top for the desktop case. It is never the only way
  * to do anything.
+ *
+ * ## The one check that happens here rather than on the server
+ *
+ * CLAUDE.md rule 1 says a rule not enforced server-side does not exist, and the
+ * size limit *is* enforced server-side — `receiveApplicationDocument` refuses an
+ * oversized file against the DOC_CHECKLIST rule set, and that check is
+ * unchanged and authoritative.
+ *
+ * The check below is not that rule. It is the request-body ceiling of the host
+ * this deployment runs on: a serverless platform rejects an oversized body at
+ * the edge, before any of this application's code runs, and answers with its own
+ * error page. So the server cannot produce the refusal — there is nothing left
+ * to refuse with. Catching it in the browser is the only place the applicant can
+ * be told, in Arabic, what happened and what to do about it. It is a message,
+ * not an authorisation, and the server still decides.
  */
 
 export interface DocumentItem {
@@ -63,10 +78,16 @@ export function DocumentsStep({
   applicationId,
   items,
   continueHref,
+  requestCeilingMb,
 }: {
   applicationId: string
   items: DocumentItem[]
   continueHref: string
+  /**
+   * The largest body the host will pass through, from `uploadRequestCeilingMb`.
+   * Not a regulatory limit — see the note at the top of this file.
+   */
+  requestCeilingMb: number
 }) {
   const t = useTranslations('apply')
   const router = useRouter()
@@ -77,6 +98,14 @@ export function DocumentsStep({
 
   const upload = React.useCallback(
     (key: string, file: File) => {
+      if (file.size > requestCeilingMb * 1024 * 1024) {
+        setStates((s) => ({
+          ...s,
+          [key]: { phase: 'failed', violation: tooLargeForHost(file.size, requestCeilingMb) },
+        }))
+        return
+      }
+
       setStates((s) => ({ ...s, [key]: { phase: 'uploading', percent: 0 } }))
 
       const body = new FormData()
@@ -118,7 +147,7 @@ export function DocumentsStep({
 
       request.send(body)
     },
-    [applicationId, router],
+    [applicationId, requestCeilingMb, router],
   )
 
   return (
@@ -333,6 +362,46 @@ function DocumentCard({
       )}
     </section>
   )
+}
+
+/**
+ * The refusal for a file the host will not carry.
+ *
+ * Shaped as a `RuleViolation` so it renders through exactly the same
+ * `BlockedAction` as every server refusal — an applicant should not be able to
+ * tell which side of the wire said no. `severity: 'ADVISORY'` and an empty
+ * `requirementIds` are honest: no regulatory requirement is being enforced here,
+ * and claiming a REQ-* ID for a hosting limit would put a false citation in
+ * front of a user. CLAUDE.md rule 3.
+ */
+function tooLargeForHost(sizeBytes: number, ceilingMb: number): RuleViolation {
+  const actualMb = (sizeBytes / (1024 * 1024)).toFixed(1)
+  const ceiling = Number.isInteger(ceilingMb) ? String(ceilingMb) : ceilingMb.toFixed(1)
+
+  return {
+    code: 'UPLOAD_EXCEEDS_HOST_LIMIT',
+    severity: 'ADVISORY',
+    requirementIds: [],
+    legalSource: '',
+    needsCounsel: false,
+    evidence: { sizeBytes, ceilingMb },
+    ar: {
+      blocked: 'لم يُرسل الملف.',
+      why: `حجم الملف ${actualMb} ميجابايت، وأقصى حجم يقبله النظام في الرفعة الواحدة ${ceiling} ميجابايت.`,
+      nextStep:
+        'أعد التصوير بجودة أقل من إعدادات الكاميرا، أو صوّر صفحة واحدة في كل مرة بدلاً من المستند كاملاً.',
+      whoToAsk:
+        'إذا كان المستند لا يمكن تصغيره، راجع الإدارة المركزية للسجلات التجارية بالهيئة العامة للرقابة على الصادرات والواردات.',
+    },
+    en: {
+      blocked: 'The file was not sent.',
+      why: `It is ${actualMb} MB, and the largest this service accepts in one upload is ${ceiling} MB.`,
+      nextStep:
+        'Retake the photo at a lower quality in your camera settings, or photograph one page at a time.',
+      whoToAsk:
+        'If the document cannot be made smaller, contact the Central Administration for Commercial Registrations at GOEIC.',
+    },
+  }
 }
 
 /** Sizes in the reader's language, with the number kept Latin. */

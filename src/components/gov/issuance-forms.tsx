@@ -51,6 +51,24 @@ export function FeesForm({
   const [method, setMethod] = React.useState<PaymentMethod>('CASH')
   const [amounts, setAmounts] = React.useState<Record<string, string>>({})
 
+  /*
+   * Read every field's error here, not inside the JSX.
+   *
+   * The three bank fields below are rendered only when the payment method is
+   * not cash. Called from inside that branch, `useFieldError` runs on some
+   * renders and not others, and React counts hooks by position: the treasurer
+   * changing the payment method from cash to cheque would crash the screen with
+   * "rendered more hooks than during the previous render". Hoisting the calls
+   * makes the count constant, which is the whole of the rule.
+   */
+  const errors = {
+    paymentMethod: useFieldError('paymentMethod'),
+    receiptNumber: useFieldError('receiptNumber'),
+    bankName: useFieldError('bankName'),
+    bankBranch: useFieldError('bankBranch'),
+    chequeNumber: useFieldError('chequeNumber'),
+  }
+
   const lines = headings
     .map((heading) => ({ feeKey: heading.key, amount: amounts[heading.key] ?? '' }))
     .filter((line) => line.amount.trim() !== '')
@@ -71,7 +89,7 @@ export function FeesForm({
       >
         <input type="hidden" name="lines" value={JSON.stringify(lines)} />
 
-        <ChoiceGroup legend={t('paymentMethod')} error={useFieldError('paymentMethod')}>
+        <ChoiceGroup legend={t('paymentMethod')} error={errors.paymentMethod}>
           {(Object.keys(paymentMethodLabels) as PaymentMethod[]).map((value) => (
             <ChoiceOption
               key={value}
@@ -84,19 +102,19 @@ export function FeesForm({
           ))}
         </ChoiceGroup>
 
-        <Field label={t('receiptNumber')} htmlFor="receiptNumber" required error={useFieldError('receiptNumber')}>
+        <Field label={t('receiptNumber')} htmlFor="receiptNumber" required error={errors.receiptNumber}>
           <Input name="receiptNumber" dir="ltr" className="font-mono" />
         </Field>
 
         {method !== 'CASH' ? (
           <div className="grid gap-4 sm:grid-cols-3">
-            <Field label={t('bankName')} htmlFor="bankName" required error={useFieldError('bankName')}>
+            <Field label={t('bankName')} htmlFor="bankName" required error={errors.bankName}>
               <Input name="bankName" />
             </Field>
-            <Field label={t('bankBranch')} htmlFor="bankBranch" required error={useFieldError('bankBranch')}>
+            <Field label={t('bankBranch')} htmlFor="bankBranch" required error={errors.bankBranch}>
               <Input name="bankBranch" />
             </Field>
-            <Field label={t('chequeNumber')} htmlFor="chequeNumber" error={useFieldError('chequeNumber')}>
+            <Field label={t('chequeNumber')} htmlFor="chequeNumber" error={errors.chequeNumber}>
               <Input name="chequeNumber" dir="ltr" className="font-mono" />
             </Field>
           </div>

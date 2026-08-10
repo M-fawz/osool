@@ -21,7 +21,9 @@ import { SignOutButton } from './sign-out-button'
  */
 export async function PortalShell({
   locale,
-  session,
+  // Accepted so that every shell takes the same props and a page can be moved
+  // between them, but not rendered: this chrome shows the firm, not the person.
+  session: _session,
   children,
   /** Shown under the wordmark: which firm this is. */
   firmName,
