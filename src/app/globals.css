@@ -1,0 +1,456 @@
+@import 'tailwindcss';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Osool design foundation
+   03-DESIGN-DIRECTION.md · PRODUCT.md
+
+   The palette and the geometry are taken from the logo, not chosen alongside
+   it. Sampled from public/logo/osool-logo.png:
+
+     · navy  #0F2D53  — the wordmark أصول and the column shaft
+     · brass #A7844E … #CFAF76 — the OSOOL lettering and the column's abacus
+
+   The logo is a classical column capital: flat horizontal rules, vertical
+   fluting, square corners. That is the whole geometry of this system —
+   structure carries the design, and rules and alignment do the work that
+   shadows and gradients would otherwise be asked to do.
+
+   Deliberately absent, per §3 of the design direction: AI beige, purple
+   gradients, glassmorphism, generic drop shadows, over-rounding, decorative
+   italic serif.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Typography ─────────────────────────────────────────────────────────────
+   IBM Plex Sans Arabic leads; IBM Plex Sans is its Latin sibling — the same
+   family, drawn to the same rhythm and weight, so mixed script in one line
+   sits on one baseline instead of looking like a fallback.
+
+   Both faces are self-hosted. A government register must not depend on a
+   third-party CDN to render its own language, and in-country hosting may make
+   an outbound font request impossible. */
+
+@font-face {
+  font-family: 'Plex Arabic';
+  src: url('/fonts/plex-arabic-400-arabic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0898-08E1,
+    U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74,
+    U+FE76-FEFC;
+}
+@font-face {
+  font-family: 'Plex Arabic';
+  src: url('/fonts/plex-arabic-500-arabic.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0898-08E1,
+    U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74,
+    U+FE76-FEFC;
+}
+@font-face {
+  font-family: 'Plex Arabic';
+  src: url('/fonts/plex-arabic-600-arabic.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0898-08E1,
+    U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74,
+    U+FE76-FEFC;
+}
+@font-face {
+  font-family: 'Plex Arabic';
+  src: url('/fonts/plex-arabic-700-arabic.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0898-08E1,
+    U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74,
+    U+FE76-FEFC;
+}
+
+@font-face {
+  font-family: 'Plex Latin';
+  src: url('/fonts/plex-latin-400-latin.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Plex Latin';
+  src: url('/fonts/plex-latin-500-latin.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Plex Latin';
+  src: url('/fonts/plex-latin-600-latin.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Plex Latin';
+  src: url('/fonts/plex-latin-700-latin.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  /* ── Ink and paper ───────────────────────────────────────────────────────
+     Near-black for text, not pure black: pure black on white vibrates on the
+     bad monitors these screens will actually be read on. */
+  --color-ink: #16181d;
+  --color-ink-muted: #4a5261;
+  --color-ink-faint: #6b7383;
+
+  --color-paper: #ffffff;
+  --color-paper-sunk: #f4f5f7;
+  --color-paper-raised: #fafbfc;
+
+  /* ── Navy — the institutional voice, straight from the logo ───────────── */
+  --color-navy-50: #eef2f8;
+  --color-navy-100: #d6dfec;
+  --color-navy-200: #adbdd8;
+  --color-navy-300: #7f95bd;
+  --color-navy-400: #4c6690;
+  --color-navy-500: #24466f;
+  --color-navy-600: #0f2d53; /* sampled from the logo */
+  --color-navy-700: #0c2444;
+  --color-navy-800: #091b33;
+  --color-navy-900: #061223;
+
+  /* ── Brass — the register's mark. Used sparingly, never decoratively ────
+     Sampled #A7844E–#CFAF76. Brass at its natural value fails AA as text on
+     white (about 2.9:1), so brass-700 exists for the cases where it must
+     carry words, and the lighter values are for rules, seals, and marks. */
+  --color-brass-100: #f3ead8;
+  --color-brass-200: #e4d2ae;
+  --color-brass-300: #cfaf76; /* sampled — the lighter gradient stop */
+  --color-brass-400: #ba9963;
+  --color-brass-500: #a7844e; /* sampled — the darker gradient stop */
+  --color-brass-600: #8a6d3f;
+  --color-brass-700: #6e5630; /* AA on white for text */
+
+  /* ── Semantic. Meaning only, never decoration ────────────────────────────
+     03-DESIGN-DIRECTION §7: meaning is never carried by colour alone. Every
+     status in this system pairs its colour with an icon and a text label,
+     because these decisions have legal consequences and a colour-blind
+     examiner must read them correctly. */
+  --color-confirmed: #1a6b46;
+  --color-confirmed-soft: #e6f2eb;
+  --color-caution: #8a5a12;
+  --color-caution-soft: #fbf1de;
+  --color-blocking: #a32626;
+  --color-blocking-soft: #fbeaea;
+  --color-informational: #24466f;
+  --color-informational-soft: #eaf0f8;
+
+  /* ── Rules and structure ─────────────────────────────────────────────── */
+  --color-rule: #dde1e8;
+  --color-rule-strong: #c3cad6;
+
+  /* ── Chrome — the navy furniture: header, sidebar, and their states ─────
+     Named by role rather than by shade, because the chrome is one surface
+     with one set of states and it should be restyleable in one place. Text
+     on it is tinted from the navy hue rather than greyed, so it reads as
+     part of the same material. */
+  --color-chrome: #0f2d53;
+  --color-chrome-deep: #0c2444;
+  --color-chrome-hover: #1a3a63;
+  --color-chrome-active: #24466f;
+  --color-chrome-rule: #22406b;
+  --color-chrome-text: #ffffff;
+  --color-chrome-muted: #a9bcd8;
+  --color-chrome-faint: #7e97bd;
+
+  /* ── Radius — restrained. This is a register, not a consumer app ──────── */
+  --radius-sharp: 0px;
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+
+  /* ── Type families ──────────────────────────────────────────────────────
+     Arabic first in the stack in both directions. A Latin string inside an
+     Arabic sentence resolves to Plex Latin through the Arabic face's
+     unicode-range, so one stack serves mixed script without a wrapper. */
+  --font-sans: 'Plex Arabic', 'Plex Latin', 'Segoe UI', Tahoma, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Cascadia Mono', Consolas, monospace;
+
+  /* ── Type scale ─────────────────────────────────────────────────────────
+     Two densities, not one. The back office is dense and the broker portal
+     is not, and a single scale cannot serve both — 03-DESIGN-DIRECTION §8.
+
+     `base` is the interface default: labels, prose, form values. It sits at
+     15px rather than the 14px a Latin-only product would use, because Plex
+     Arabic's x-height runs smaller than its Latin sibling's at the same
+     nominal size, and 14px Arabic is a squint on the monitors these screens
+     are actually read on.
+
+     `sm` is the table size. Tables are where density is bought, and they buy
+     it deliberately in one place instead of the whole product shrinking. */
+  --text-2xs: 0.6875rem; /* 11px — column labels, meta */
+  --text-xs: 0.75rem; /* 12px — secondary row detail */
+  --text-sm: 0.8125rem; /* 13px — table body */
+  --text-base: 0.9375rem; /* 15px — interface default */
+  --text-md: 1rem; /* 16px — emphasised body, portal */
+  --text-lg: 1.125rem; /* 18px — panel and section titles */
+  --text-xl: 1.375rem; /* 22px — page titles */
+  --text-2xl: 1.625rem; /* 26px */
+  --text-3xl: 2rem; /* 32px — the landing page only */
+
+  /* ── Elevation — only where something genuinely floats ─────────────────── */
+  --shadow-dialog: 0 8px 28px -6px rgb(9 27 51 / 0.28);
+  --shadow-menu: 0 4px 14px -3px rgb(9 27 51 / 0.18);
+  /* The one non-floating shadow in the system: it marks that a sticky table
+     header is covering rows, which is information, not decoration. */
+  --shadow-sticky: 0 1px 0 0 var(--color-rule-strong), 0 4px 6px -4px rgb(9 27 51 / 0.15);
+
+  /* ── Layout ─────────────────────────────────────────────────────────────
+     One container width and one gutter, declared once so every surface
+     lines up with every other one. */
+  --container-shell: 1560px;
+  --container-reading: 42rem;
+  --spacing-gutter: 1.5rem;
+  --spacing-sidebar: 15rem;
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-paper-sunk);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Arabic sits slightly larger than Latin at the same nominal size, and its
+   ascenders and descenders need more room. One rule, applied once. */
+[lang='ar'],
+[dir='rtl'] {
+  line-height: 1.75;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-navy-700);
+}
+
+/* ── Focus — a real state, never the browser default ring ───────────────────
+   03-DESIGN-DIRECTION §7. Two rings, because one is not enough: a navy ring
+   is invisible against the navy chrome, and the header and sidebar are
+   exactly where a keyboard user starts. Anything inside `.on-chrome` gets the
+   brass ring instead — the only other colour in the system, and legible on
+   both navy and white. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-navy-600);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+.on-chrome :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible,
+:where(a, button, summary, [tabindex]).on-chrome:focus-visible {
+  outline-color: var(--color-brass-300);
+}
+
+/* Selection tinted from the institutional hue rather than the browser blue,
+   so a dragged-over registration number still belongs to this system. */
+::selection {
+  background: var(--color-navy-100);
+  color: var(--color-navy-900);
+}
+
+/* ── Autofill ──────────────────────────────────────────────────────────────
+   Chrome paints its own pale blue over any field it has filled, which on the
+   sign-in screen means the two most important inputs in the product are the
+   only ones not drawn in this system's colours — and on a bad monitor the
+   tint reads as a disabled state.
+
+   The background cannot be set directly on an autofilled control, so the
+   long-standing trick is used: an inset shadow the size of the field, which
+   does paint. The transition delay keeps it from flashing blue first. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+select:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 100px var(--color-paper) inset;
+  box-shadow: 0 0 0 100px var(--color-paper) inset;
+  -webkit-text-fill-color: var(--color-ink);
+  caret-color: var(--color-ink);
+  transition: background-color 100000s ease-in-out 0s;
+}
+
+/* ── Numerals, dates, and reference numbers stay LTR inside RTL text ───────
+   03-DESIGN-DIRECTION §5: "Do not mirror: numerals, dates, phone numbers,
+   email addresses, Latin-script names, registration numbers, or any code.
+   These stay left-to-right inside right-to-left text, and they must not break
+   the line."
+
+   `unicode-bidi: isolate` is what makes this correct rather than approximate:
+   it stops the surrounding Arabic from reordering the run, and stops the run
+   from reordering the Arabic around it. */
+.ltr-run {
+  direction: ltr;
+  unicode-bidi: isolate;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The same isolation, without the no-wrap.
+   `nowrap` is right for a registration number — one broken across two lines is
+   one somebody mistypes — but wrong for a machine identifier like
+   `AUDIT_TRAIL_VIEWED`, which is not transcribed by hand and which, held on a
+   single line, sets a column width that pushes two other columns off the
+   screen. Isolation is what matters for correctness; wrapping is a layout
+   decision, and these are the cases where it should be allowed. */
+.ltr-run-wrap {
+  direction: ltr;
+  unicode-bidi: isolate;
+  /* `break-word`, not `anywhere`. `anywhere` lets the browser break at the
+     narrowest opportunity even when the token would have fitted, which turned
+     AUDIT_TRAIL_VIEWED into three stacked fragments. `break-word` breaks only
+     when a word genuinely cannot fit on a line of its own. */
+  overflow-wrap: break-word;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tabular numerals everywhere a column of figures appears, so digits align
+   vertically down a table of capital amounts. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── The column motif ──────────────────────────────────────────────────────
+   The brass rule under a page header echoes the abacus of the logo's column
+   capital. It is the one ornamental gesture in the system, and it is a
+   1px–3px horizontal line. */
+.brass-rule {
+  border-block-end: 3px solid var(--color-brass-500);
+}
+
+/* ── Dense data ────────────────────────────────────────────────────────────
+   The back office is tables. These rules are what make a hundred rows
+   readable rather than merely present.
+
+   The sticky header is the important one: an examiner scrolling a queue must
+   never have to scroll back up to remember which column they are reading.
+   The shadow appears only once rows are actually underneath it, so it is a
+   state and not an ornament. */
+.data-scroll {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.data-table thead th {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  background: var(--color-paper-sunk);
+  box-shadow: var(--shadow-sticky);
+}
+
+/* Zebra banding at a weight that guides the eye across a wide row without
+   turning the table into stripes. It is switched off when the row carries a
+   status of its own, so the two never compete. */
+.data-table tbody tr:nth-child(even):not([data-tone]) {
+  background: color-mix(in srgb, var(--color-paper-sunk) 55%, transparent);
+}
+
+.data-table tbody tr:hover {
+  background: var(--color-navy-50);
+}
+
+/* A slim scrollbar, so a horizontally scrolling table does not lose a row of
+   height to browser furniture. */
+.data-scroll::-webkit-scrollbar {
+  height: 10px;
+}
+.data-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-rule-strong);
+  /* Square, like everything else. A pill-shaped thumb was the one 999px
+     radius in a system whose scale stops at 4px. */
+  border-radius: var(--radius-xs);
+}
+.data-scroll::-webkit-scrollbar-track {
+  background: var(--color-paper-sunk);
+}
+
+/* ── Print ─────────────────────────────────────────────────────────────────
+   Registration cards and statutory letters are printed. Officials print
+   screens too, and a screen that prints badly gets photographed instead. */
+@media print {
+  body {
+    background: #fff;
+    font-size: 10pt;
+  }
+  .no-print {
+    display: none !important;
+  }
+  /* Chrome is navigation; paper does not navigate. */
+  header[data-chrome],
+  nav[data-chrome] {
+    display: none !important;
+  }
+  /* Status colours are the meaning, not the decoration, so they must survive
+     the printer's default of dropping backgrounds. The text label prints
+     either way — that is why it is always there — but a printed register
+     page that loses its confirmed/blocking distinction is harder to read
+     than one that keeps it. */
+  [data-status] {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .data-table thead th {
+    position: static;
+    box-shadow: none;
+  }
+  /* Never break a record across two sheets. */
+  tr,
+  section {
+    break-inside: avoid;
+  }
+  a[href]::after {
+    content: '';
+  }
+}
+
+/* ── Reduced motion ────────────────────────────────────────────────────────
+   Everything stops except the busy indicator. A frozen spinner is not a
+   calmer spinner; it is one that says the request has died. Progress is
+   information, and the preference asks for less decoration, not less
+   information. */
+@media (prefers-reduced-motion: reduce) {
+  *:not([data-spinner]),
+  *:not([data-spinner])::before,
+  *:not([data-spinner])::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  [data-spinner] {
+    animation-duration: 1.6s !important;
+  }
+}

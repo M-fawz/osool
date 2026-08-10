@@ -1,0 +1,1688 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Osool (أصول) — the digital Real Estate Brokers Register
+//
+// Read 02-SYSTEM-ARCHITECTURE.md §9 before changing anything here.
+//
+// Three invariants hold across every model in this file:
+//
+//   1. Every table carries createdAt, updatedAt, archivedAt, retentionUntil,
+//      and legalHold. Records leave working views by being archived, never by
+//      being destroyed.
+//   2. No relation uses `onDelete: Cascade`. Every relation is Restrict, so the
+//      database itself refuses to let a delete propagate. The only rows this
+//      product ever deletes are Session and Verification — ephemeral
+//      credentials, not records — and their lifecycle is written to AuditEvent
+//      before they go.
+//   3. No regulatory threshold appears as a column default or an enum value.
+//      Codes are identifiers; the numbers behind them live in RuleSet/RuleItem
+//      with effective dates. See §6 and REQ traceability rules in Part F of
+//      01-LEGAL-REFERENCE.md.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Enumerations — stable identifiers only
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Government and broker roles. 02-SYSTEM-ARCHITECTURE §4.
+/// SYSTEM_ADMIN is deliberately absent from every case-data query path:
+/// administration is not access.
+enum Role {
+  SYSTEM_ADMIN
+  REGISTRY_CLERK
+  EXAMINER
+  REVIEWER
+  CARD_ISSUER
+  DATA_MANAGER
+  FILES_HEAD
+  AML_SUPERVISOR
+  INSPECTOR
+  ANALYST
+  AUDITOR
+  BROKER_OWNER
+  BROKER_STAFF
+  BROKER_AGENT
+}
+
+enum UserStatus {
+  /// Created by an administrator, activation email sent, password not yet set.
+  PENDING_ACTIVATION
+  ACTIVE
+  /// Loses access on the next request, not at next sign-in. §4 control 3.
+  SUSPENDED
+}
+
+/// REQ-REG-010 — D578 Article 1. A broker holds one or more of exactly four
+/// types. Stored as a set on Registration, never as a single value.
+enum BrokerType {
+  SELL
+  BUY
+  DUAL
+  RENTAL
+}
+
+/// REQ-REG-020 — D578 Article 2. These are the category *codes*. The contract
+/// value bands and paid-up capital floors attached to them are versioned rule
+/// data in the BROKER_CATEGORY rule set, never constants here.
+enum BrokerCategory {
+  A
+  B
+  C
+  D
+}
+
+enum PartyType {
+  NATURAL_PERSON
+  LEGAL_PERSON
+}
+
+/// REQ-REG-030 — the capacity in which the applicant signs.
+enum ApplicantCapacity {
+  SOLE_TRADER
+  CHAIRMAN
+  RESPONSIBLE_MANAGER
+  GENERAL_PARTNER
+  AGENT_UNDER_POA
+}
+
+/// 02-SYSTEM-ARCHITECTURE §5. A status is never assignable directly — only a
+/// transition permitted by ApplicationTransition can move an application here.
+enum ApplicationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_INTAKE
+  UNDER_EXAMINATION
+  AWAITING_COMPLETION
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  AWAITING_PAYMENT
+  CARD_ISSUED
+  ACTIVE
+  WITHDRAWN
+}
+
+enum RegistrationStatus {
+  ACTIVE
+  RENEWAL_DUE
+  LAPSED
+  SUSPENDED
+  CANCELLED
+}
+
+enum ApplicationKind {
+  NEW_REGISTRATION
+  RENEWAL
+  AMENDMENT
+}
+
+enum CompletionStatus {
+  REQUESTED
+  SATISFIED
+  WAIVED
+}
+
+/// REQ-REG-050 step 4 — "Payment recorded — cash or certified/bank cheque,
+/// with issuing bank and branch." The platform records; it does not process.
+enum PaymentMethod {
+  CASH
+  CERTIFIED_CHEQUE
+  BANK_CHEQUE
+}
+
+/// REQ-REG-030 — "authentication number from الشهر العقاري / embassy /
+/// consulate". Which body authenticated the brokerage contract.
+enum AuthenticationBody {
+  REAL_ESTATE_PUBLICITY
+  EMBASSY
+  CONSULATE
+}
+
+/// What a stored document *is*, as distinct from what checklist item it
+/// answers. An applicant's upload resolves against DOC_CHECKLIST; a card the
+/// Authority itself issued answers no checklist item and must not be counted
+/// as though it did.
+enum DocumentKind {
+  APPLICANT_UPLOAD
+  ISSUED_CARD
+}
+
+/// The examiner's recommendation on the internal review form, REQ-REG-051.
+/// It is a recommendation, never a decision: REQ-REG-052 puts the decision
+/// with a different person.
+enum ExaminerRecommendation {
+  RECOMMEND_APPROVAL
+  RECOMMEND_REFUSAL
+}
+
+/// REQ-AML-010 — manager and deputy, each held as a tenure.
+enum ComplianceRole {
+  MANAGER
+  DEPUTY
+}
+
+enum SignalState {
+  OPEN
+  UNDER_REVIEW
+  DISMISSED_WITH_REASON
+  ESCALATED
+}
+
+enum SignalSeverity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/// 00-VISION §5. Two families: signals about the supervised population, and
+/// signals about the Authority's own process.
+enum SignalFamily {
+  SUPERVISED_POPULATION
+  PROCESS_INTEGRITY
+}
+
+/// REQ-DPA-002 — read access is audited, not only writes.
+enum AuditAccessType {
+  READ
+  WRITE
+}
+
+enum InspectionStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum FindingStatus {
+  OPEN
+  REMEDIATION_REQUESTED
+  REMEDIATED
+  CLOSED
+}
+
+/// The 27 governorates. A data dimension, per §10 decision 2: one national
+/// deployment, governorate as a column — not per-governorate instances.
+enum Governorate {
+  CAIRO
+  GIZA
+  ALEXANDRIA
+  QALYUBIA
+  PORT_SAID
+  SUEZ
+  DAKAHLIA
+  SHARQIA
+  GHARBIA
+  MONUFIA
+  BEHEIRA
+  KAFR_EL_SHEIKH
+  DAMIETTA
+  ISMAILIA
+  NORTH_SINAI
+  SOUTH_SINAI
+  BENI_SUEF
+  FAYOUM
+  MINYA
+  ASYUT
+  SOHAG
+  QENA
+  LUXOR
+  ASWAN
+  RED_SEA
+  NEW_VALLEY
+  MATROUH
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Accounts and sessions
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Better Auth's user table, extended with the fields this register needs.
+///
+/// Government accounts are created only by SYSTEM_ADMIN (§4). Broker accounts
+/// self-register. `role` and `status` are re-read from this table on every
+/// request — never trusted from the session cookie — so a suspension or a role
+/// change takes effect immediately rather than at next sign-in.
+model User {
+  id            String     @id @default(cuid())
+  name          String
+  email         String     @unique
+  emailVerified Boolean    @default(false)
+  image         String?
+
+  /// Defaults to the least-privileged role in the system, deliberately.
+  ///
+  /// Better Auth is configured so that `role` can never arrive from a request
+  /// body (`input: false`), which closes the obvious privilege-escalation hole
+  /// — a self-registering broker posting `role: SYSTEM_ADMIN` to the public
+  /// sign-up endpoint. That leaves the question of what a user created without
+  /// an explicit role should be, and the answer has to fail safe: forgetting to
+  /// set a role yields the fewest powers, not the most. Government roles are
+  /// assigned server-side by provisioning, in the same transaction as creation.
+  role   Role       @default(BROKER_OWNER)
+  status UserStatus @default(PENDING_ACTIVATION)
+
+  /// Arabic form of the employee's name. The back office runs in Arabic.
+  nameAr String?
+
+  /// Set for broker-side users only; null for every government account.
+  brokerEntityId String?
+  brokerEntity   BrokerEntity? @relation(fields: [brokerEntityId], references: [id], onDelete: Restrict)
+
+  /// Who provisioned this account, for government users. §4.
+  createdByUserId String?
+  createdBy       User?   @relation("UserProvisioning", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  provisioned     User[]  @relation("UserProvisioning")
+
+  suspendedAt     DateTime?
+  suspendedReason String?
+  lastSignInAt    DateTime?
+
+  sessions           Session[]
+  accounts           Account[]
+  auditEvents        AuditEvent[]
+  applicationEvents  ApplicationEvent[]
+  examinedApps       Application[]        @relation("ApplicationExaminer")
+  reviewedApps       Application[]        @relation("ApplicationReviewer")
+  intakeApps         Application[]        @relation("ApplicationIntakeClerk")
+  issuedApps         Application[]        @relation("ApplicationCardIssuer")
+  requestedCompletions Completion[]       @relation("CompletionRequestedBy")
+  resolvedCompletions  Completion[]       @relation("CompletionResolvedBy")
+  uploadedDocuments  Document[]
+  publishedRuleSets  RuleSet[]
+  signalDispositions Signal[]             @relation("SignalDisposedBy")
+  inspections        Inspection[]         @relation("InspectionInspector")
+  legalHolds         LegalHold[]
+  examinationsSigned ExaminationRecord[]  @relation("ExaminationExaminer")
+  examinationsReviewed ExaminationRecord[] @relation("ExaminationReviewer")
+  feesRecorded       FeeRecord[]          @relation("FeeRecordedBy")
+  cardsIssued        CardIssuance[]       @relation("CardIssuedBy")
+  cardsDelivered     CardIssuance[]       @relation("CardDeliveredBy")
+  filesDataExtracted FileHandlingRecord[] @relation("FileDataExtractedBy")
+  filesArchived      FileHandlingRecord[] @relation("FileArchivedBy")
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([role, status])
+  @@index([brokerEntityId])
+  @@index([archivedAt])
+  @@map("user")
+}
+
+/// Ephemeral authentication state, not a record of the register.
+///
+/// This is one of exactly two tables in the product whose rows are deleted:
+/// a revoked session must not be resurrectable, and retaining live session
+/// tokens indefinitely would be a liability rather than an audit benefit. The
+/// *fact* of every sign-in and sign-out is written to AuditEvent first, so the
+/// permanent record survives the token.
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("account")
+}
+
+/// Activation, email-verification, and password-reset tokens. The second and
+/// last table whose rows are deleted — a consumed token must not linger.
+/// Better Auth owns this table's lifecycle.
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Parties and ownership
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// One table for persons and organisations, with dual-script names.
+/// Everything that can own, control, apply, or be screened is a Party.
+///
+/// Dual script is not a nicety: REQ-REG-030 requires the client name in both
+/// Arabic and English, and the register must be searchable across both at once.
+model Party {
+  id   String    @id @default(cuid())
+  type PartyType
+
+  nameAr String
+  nameEn String?
+
+  /// REQ-CDD-002 — nationality participates in the beneficial-owner cascade
+  /// and in REQ-FGN-002's corporate nationality test.
+  nationality String?
+
+  // ── Natural persons — REQ-CDD §C.2 ──────────────────────────────────────
+  /// Encrypted at rest (REQ-DPA-002). Never queried in the clear.
+  nationalIdEnc  String?
+  /// Deterministic HMAC of the national ID, so duplicates are detectable
+  /// without the plaintext being readable. Backs the identity-reuse signal.
+  nationalIdHash String?
+  dateOfBirth    DateTime?
+  placeOfBirth   String?
+  sex            String?
+  occupation     String?
+  employer       String?
+
+  // ── Legal persons — REQ-CDD §C.3 ────────────────────────────────────────
+  legalForm              String?
+  commercialRegisterNo   String?
+  commercialRegisterDate DateTime?
+  taxRegistrationNo      String?
+
+  /// REQ-REG-030 names four separate commercial-register facts — number,
+  /// issuing office, date, and renewal date — and two tax facts: number and
+  /// office. Holding only the number and the date would have made the register
+  /// unable to answer "which office issued this?", which is the question an
+  /// examiner asks when a register extract looks wrong.
+  commercialRegisterOffice        String?
+  commercialRegisterRenewalDate   DateTime?
+  taxOffice                       String?
+
+  applications Application[] @relation("ApplicationApplicant")
+
+  // ── Contact ─────────────────────────────────────────────────────────────
+  addressLine  String?
+  governorate  Governorate?
+  poBox        String?
+  telephone    String?
+  email        String?
+
+  ownedEdges     Ownership[] @relation("OwnerParty")
+  ownsEdges      Ownership[] @relation("OwnedParty")
+  brokerEntities BrokerEntity[]
+  poaPrincipals  PowerOfAttorney[] @relation("PoaPrincipal")
+  poaAgents      PowerOfAttorney[] @relation("PoaAgent")
+  complianceTenures ComplianceOfficerTenure[]
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([nameAr])
+  @@index([nameEn])
+  @@index([nationalIdHash])
+  @@index([commercialRegisterNo])
+  @@index([type, archivedAt])
+  @@map("party")
+}
+
+/// An ownership edge with a percentage between two Parties.
+///
+/// REQ-CDD-002 — this is what makes the 25% beneficial-owner cascade
+/// computable. A flat text field was the predecessor system's defining
+/// failure and is not an acceptable implementation.
+///
+/// Edges are time-bounded rather than mutable: an ownership change closes the
+/// old edge and opens a new one, so the structure as it stood on any past date
+/// remains reconstructible.
+model Ownership {
+  id String @id @default(cuid())
+
+  ownerPartyId String
+  ownerParty   Party  @relation("OwnerParty", fields: [ownerPartyId], references: [id], onDelete: Restrict)
+
+  ownedPartyId String
+  ownedParty   Party  @relation("OwnedParty", fields: [ownedPartyId], references: [id], onDelete: Restrict)
+
+  /// Percentage of capital held, 0–100, four decimal places.
+  percentage Decimal @db.Decimal(7, 4)
+
+  /// True where control is exercised by means other than a capital stake —
+  /// cascade step 2 in REQ-CDD-002.
+  controlByOtherMeans Boolean @default(false)
+
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([ownedPartyId, effectiveFrom])
+  @@index([ownerPartyId, effectiveFrom])
+  @@map("ownership")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// The supervised firm and its registrations
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// The supervised firm. One BrokerEntity has a *history* of Registrations,
+/// not a mutable set of columns.
+model BrokerEntity {
+  id String @id @default(cuid())
+
+  partyId String
+  party   Party  @relation(fields: [partyId], references: [id], onDelete: Restrict)
+
+  /// REQ-REG-030 — trade name and trade style are distinct fields on the form.
+  tradeNameAr  String
+  tradeNameEn  String?
+  tradeStyleAr String?
+  tradeStyleEn String?
+
+  headOfficeAddress String?
+  governorate       Governorate?
+
+  registrations      Registration[]
+  applications       Application[]
+  users              User[]
+  contracts          BrokerageContract[]
+  complianceTenures  ComplianceOfficerTenure[]
+  trainingRecords    TrainingRecord[]
+  inspections        Inspection[]
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([tradeNameAr])
+  @@index([governorate, archivedAt])
+  @@map("broker_entity")
+}
+
+/// A time-bounded registration. REQ-REG-060 — validity has an end, and renewal
+/// falls due 90 days before it. The 90 is rule data, not a constant here.
+model Registration {
+  id String @id @default(cuid())
+
+  brokerEntityId String
+  brokerEntity   BrokerEntity @relation(fields: [brokerEntityId], references: [id], onDelete: Restrict)
+
+  /// The permanent registration number, issued at card issuance.
+  /// REQ-REG-061 — it must appear on all printed matter, so it is the number
+  /// the public verification page accepts.
+  registrationNumber String @unique
+
+  category BrokerCategory
+  /// REQ-REG-010 — a set, because registration in more than one type is
+  /// permitted and a contract's capacity is validated against it.
+  types    BrokerType[]
+
+  /// REQ-REG-021 — the paid-up capital the category was granted against,
+  /// recorded as it stood at the decision, in EGP.
+  paidUpCapital Decimal @db.Decimal(18, 2)
+
+  validFrom DateTime
+  validTo   DateTime
+  status    RegistrationStatus @default(ACTIVE)
+
+  /// The BROKER_CATEGORY rule-set version this registration was decided under,
+  /// so the decision stays re-explainable after a decree amends the bands.
+  decidedUnderRuleSetId String?
+  decidedUnderRuleSet   RuleSet? @relation(fields: [decidedUnderRuleSetId], references: [id], onDelete: Restrict)
+
+  applications Application[]
+  contracts    BrokerageContract[]
+  cardIssuance CardIssuance?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([brokerEntityId, status])
+  @@index([status, validTo])
+  @@index([category])
+  @@map("registration")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Applications and the workflow
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// The request that produces or renews a Registration.
+///
+/// REQ-REG-050 digitises the GOEIC workflow exactly as printed on the forms.
+/// The officials named on each step are recorded as separate columns because
+/// REQ-REG-052 — segregation of duties — needs examiner and reviewer to be
+/// independently checkable. A CHECK constraint in the migration enforces that
+/// they are different people; the Server Action enforces it again.
+model Application {
+  id   String          @id @default(cuid())
+  kind ApplicationKind @default(NEW_REGISTRATION)
+
+  brokerEntityId String
+  brokerEntity   BrokerEntity @relation(fields: [brokerEntityId], references: [id], onDelete: Restrict)
+
+  /// Set on renewal and amendment applications.
+  registrationId String?
+  registration   Registration? @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+
+  status ApplicationStatus @default(DRAFT)
+
+  /// REQ-REG-050 step 1 — the temporary number assigned at intake, distinct
+  /// from the permanent registration number issued at step 5.
+  temporaryNumber String? @unique
+  pageCount       Int?
+
+  /// What the applicant is asking for. Validated against paid-up capital at
+  /// submission under REQ-REG-021.
+  requestedCategory BrokerCategory?
+  requestedTypes    BrokerType[]
+  paidUpCapital     Decimal?          @db.Decimal(18, 2)
+  applicantCapacity ApplicantCapacity?
+
+  /// The natural person signing, as distinct from the firm being registered.
+  /// REQ-REG-030 captures the capacity they sign in; CDD §5.1 captures who
+  /// they are. A sole trader is both, but a chairman or an agent is not, and
+  /// collapsing the two would have lost the identity the register screens.
+  applicantPartyId String?
+  applicantParty   Party?  @relation("ApplicationApplicant", fields: [applicantPartyId], references: [id], onDelete: Restrict)
+
+  submittedAt DateTime?
+  decidedAt   DateTime?
+
+  /// The rule-set versions in force when this application was submitted.
+  /// Every later evaluation of this application uses these, never today's.
+  submittedUnderRuleSetIds Json?
+
+  // ── The hands the file passed through, REQ-REG-050 ──────────────────────
+  intakeClerkId String?
+  intakeClerk   User?   @relation("ApplicationIntakeClerk", fields: [intakeClerkId], references: [id], onDelete: Restrict)
+
+  examinerId String?
+  examiner   User?   @relation("ApplicationExaminer", fields: [examinerId], references: [id], onDelete: Restrict)
+
+  reviewerId String?
+  reviewer   User?   @relation("ApplicationReviewer", fields: [reviewerId], references: [id], onDelete: Restrict)
+
+  cardIssuerId String?
+  cardIssuer   User?   @relation("ApplicationCardIssuer", fields: [cardIssuerId], references: [id], onDelete: Restrict)
+
+  rejectionReason String?
+
+  events       ApplicationEvent[]
+  completions  Completion[]
+  declarations Declaration[]
+  documents    Document[]
+  powerOfAttorneyId String?
+  powerOfAttorney   PowerOfAttorney? @relation(fields: [powerOfAttorneyId], references: [id], onDelete: Restrict)
+  signals      Signal[]
+
+  // ── REQ-REG-030's three data blocks, and the six workflow steps ─────────
+  entityData    ApplicationEntityData?
+  contractData  ApplicationContractData[]
+  examination   ExaminationRecord?
+  feeRecord     FeeRecord?
+  cardIssuance  CardIssuance?
+  fileHandling  FileHandlingRecord?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([status, updatedAt])
+  @@index([brokerEntityId])
+  @@index([examinerId])
+  @@index([reviewerId])
+  @@map("application")
+}
+
+/// The table of permitted transitions. 02-SYSTEM-ARCHITECTURE §5:
+/// "Allowed transitions live in one table and are checked server-side.
+/// A status is never assignable directly."
+model ApplicationTransition {
+  id        String            @id @default(cuid())
+  fromState ApplicationStatus
+  toState   ApplicationStatus
+  /// The action name a Server Action must name to make this move.
+  action    String
+  /// Roles permitted to perform it. Checked against the session's live role.
+  allowedRoles Role[]
+  description  String?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@unique([fromState, toState, action])
+  @@map("application_transition")
+}
+
+/// Append-only transition log. One row per state change, forever.
+model ApplicationEvent {
+  id String @id @default(cuid())
+
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+
+  actorUserId String
+  actor       User   @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  actorRole   Role
+
+  action    String
+  fromState ApplicationStatus?
+  toState   ApplicationStatus
+
+  reason    String?
+  ipAddress String?
+  userAgent String?
+
+  /// The rule-set versions in force at the moment of the transition.
+  ruleSetVersions Json?
+
+  occurredAt DateTime @default(now())
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([applicationId, occurredAt])
+  @@index([actorUserId])
+  @@map("application_event")
+}
+
+/// REQ-REG-052 and the note in §5: "AWAITING_COMPLETION requires at least one
+/// structured completion item — free text alone is not accepted, because
+/// الاستيفاءات is the most exploitable step in the paper process and must be
+/// itemised to be auditable."
+///
+/// `checklistItemKey` ties the request back to a DOC_CHECKLIST entry, which is
+/// what makes "completions requested that have no basis in the documented
+/// requirements list" a computable signal.
+model Completion {
+  id String @id @default(cuid())
+
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+
+  /// 1–4 on the printed form (REQ-REG-051), unbounded here. Numbered across
+  /// the whole application rather than per round, so that item 5 is item 5 for
+  /// everyone who ever reads the file.
+  itemNumber Int
+
+  /// Which examination round asked for it. "Completions requested, satisfied,
+  /// then more completions requested" is a shape worth being able to count —
+  /// 00-VISION §5's completions-then-sudden-approval signal reads this.
+  round Int @default(1)
+
+  checklistItemKey String?
+  descriptionAr    String
+  descriptionEn    String?
+
+  status CompletionStatus @default(REQUESTED)
+
+  requestedByUserId String
+  requestedBy       User   @relation("CompletionRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  requestedAt       DateTime @default(now())
+
+  resolvedByUserId String?
+  resolvedBy       User?   @relation("CompletionResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: Restrict)
+  resolvedAt       DateTime?
+  /// A waiver must say why. Waiving without a reason is not possible.
+  resolutionReason String?
+
+  /// The document uploaded in answer, if any. Its absence where a completion
+  /// was marked satisfied is itself a signal.
+  satisfiedByDocumentId String?
+  satisfiedByDocument   Document? @relation(fields: [satisfiedByDocumentId], references: [id], onDelete: Restrict)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@unique([applicationId, itemNumber])
+  @@index([applicationId, status])
+  @@map("completion")
+}
+
+/// REQ-REG-040 — each of the fifteen declarations as a discrete, individually
+/// recorded assertion. Not one blanket checkbox: each is independently
+/// falsifiable and independently cross-checkable.
+///
+/// The text is stored alongside the answer because the wording is versioned
+/// rule data and the applicant asserted *that* wording on *that* date.
+model Declaration {
+  id String @id @default(cuid())
+
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+
+  /// Key into the DECLARATIONS rule set, e.g. "DECL-01".
+  declarationKey String
+  /// The exact wording asserted, captured at the moment of assertion.
+  textAr         String
+  textEn         String?
+
+  affirmed   Boolean
+  /// Some declarations carry a qualification — declaration 10 names an
+  /// employer where the agent is a public-sector employee, for instance.
+  qualification String?
+
+  assertedAt DateTime @default(now())
+  ipAddress  String?
+
+  /// The DECLARATIONS rule-set version whose wording was asserted.
+  ruleSetId String?
+  ruleSet   RuleSet? @relation(fields: [ruleSetId], references: [id], onDelete: Restrict)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@unique([applicationId, declarationKey])
+  @@index([declarationKey, affirmed])
+  @@map("declaration")
+}
+
+/// REQ-REG-041 — number + year + notarisation office is a composite key, so
+/// reuse of the same power of attorney across unrelated applicants is
+/// detectable rather than invisible.
+model PowerOfAttorney {
+  id String @id @default(cuid())
+
+  /// General (عام) or special (خاص).
+  poaType String
+
+  number             String
+  year               Int
+  notarisationOffice String
+  notarisedOn        DateTime?
+
+  principalPartyId String?
+  principalParty   Party?  @relation("PoaPrincipal", fields: [principalPartyId], references: [id], onDelete: Restrict)
+
+  agentPartyId String?
+  agentParty   Party?  @relation("PoaAgent", fields: [agentPartyId], references: [id], onDelete: Restrict)
+
+  /// REQ-REG-041 — the declaration that the POA remains in force and the
+  /// principal remains alive, as at the date it was made.
+  stillValidDeclaredAt DateTime?
+  principalAliveDeclaredAt DateTime?
+
+  applications Application[]
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@unique([number, year, notarisationOffice])
+  @@index([number, year])
+  @@map("power_of_attorney")
+}
+
+/// REQ-REG-063 — every contract registered before any work is performed under
+/// it. REQ-REG-022 — value checked against the category ceiling. REQ-REG-010 —
+/// the capacity acted in must be a type the broker actually holds.
+model BrokerageContract {
+  id String @id @default(cuid())
+
+  brokerEntityId String
+  brokerEntity   BrokerEntity @relation(fields: [brokerEntityId], references: [id], onDelete: Restrict)
+
+  registrationId String?
+  registration   Registration? @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+
+  /// REQ-REG-030 — client name in both scripts is required by the form.
+  clientNameAr String
+  clientNameEn String?
+  clientNationality String?
+
+  /// Authentication reference from الشهر العقاري, an embassy, or a consulate,
+  /// and which of the three it came from. The number alone does not identify
+  /// the record it refers to.
+  authenticationNumber String?
+  authenticationBody   AuthenticationBody?
+
+  validFrom DateTime
+  validTo   DateTime?
+
+  /// REQ-REG-051 — brokerage nature: sale, purchase, or lease.
+  capacityActedIn BrokerType
+
+  contractValue Decimal? @db.Decimal(18, 2)
+
+  subjectDescription String?
+  subjectAddress     String?
+  governorate        Governorate?
+
+  /// REQ-REG-064 — cessation of activity notified within thirty days.
+  ceasedAt DateTime?
+  cessationNotifiedAt DateTime?
+
+  signals Signal[]
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([brokerEntityId, validFrom])
+  @@index([registrationId])
+  @@index([clientNameAr])
+  @@map("brokerage_contract")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REQ-REG-030 — the application form's three data blocks, as declared
+//
+// These sit on the Application rather than on BrokerEntity and Party, and the
+// distinction is the point. BrokerEntity is what the register *holds*; this is
+// what the applicant *said*, on the day they said it. If the two were one set
+// of columns, then a firm correcting its telephone number in 2027 would
+// silently rewrite the document an examiner approved in 2026, and the file
+// would no longer evidence the decision that was actually taken.
+//
+// The projection runs one way, at issuance: an approved application writes its
+// declared data onto the entity. Never the reverse.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// REQ-REG-030 *Entity data* — the block headed بيانات المنشأة on GOEIC form
+/// CR-CA-QR7--01.
+model ApplicationEntityData {
+  id String @id @default(cuid())
+
+  applicationId String      @unique
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+
+  /// Sole establishment or company. Selects which DOC_CHECKLIST items apply
+  /// and which declaration exemptions are offered.
+  establishmentType PartyType @default(NATURAL_PERSON)
+  legalForm         String?
+
+  tradeNameAr  String
+  tradeNameEn  String?
+  tradeStyleAr String?
+  tradeStyleEn String?
+
+  headOfficeAddress String
+  governorate       Governorate
+  poBox             String?
+  telephone         String
+  email             String?
+
+  commercialRegisterNo          String
+  commercialRegisterOffice      String
+  commercialRegisterDate        DateTime
+  commercialRegisterRenewalDate DateTime?
+
+  taxRegistrationNo String
+  taxOffice         String
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([commercialRegisterNo])
+  @@map("application_entity_data")
+}
+
+/// REQ-REG-030 *Brokerage contract data (client data)* — the block headed
+/// بيانات عقد الوساطة. Held as rows because a firm may declare more than one
+/// contract with its application, and because REQ-REG-063 makes each contract
+/// an object in its own right rather than a paragraph about the applicant.
+///
+/// These materialise into BrokerageContract rows at card issuance, when there
+/// is finally a Registration for them to belong to.
+model ApplicationContractData {
+  id String @id @default(cuid())
+
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+
+  /// Display and numbering order on the form.
+  position Int @default(1)
+
+  /// REQ-REG-030 requires the client name in both scripts. Not a convenience:
+  /// the register is searched in both, and a name held in one is a name the
+  /// other half of the Authority cannot find.
+  clientNameAr      String
+  clientNameEn      String
+  clientNationality String
+
+  /// REQ-REG-030 — the authentication reference and the body that issued it.
+  authenticationBody   AuthenticationBody
+  authenticationNumber String
+
+  validFrom DateTime
+  validTo   DateTime
+
+  /// REQ-REG-051 — brokerage nature: sale, purchase, lease, or dual.
+  capacityActedIn BrokerType
+
+  /// REQ-REG-022 evaluates this against the registered category's ceiling.
+  /// Optional, because the form does not always carry a stated value.
+  contractValue Decimal? @db.Decimal(18, 2)
+
+  subjectDescription String
+  subjectAddress     String
+  governorate        Governorate?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@unique([applicationId, position])
+  @@index([clientNameAr])
+  @@map("application_contract_data")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// REQ-REG-050 — the Authority's own eight steps, digitised without alteration
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// REQ-REG-051 — the internal review form, GOEIC CR-CA-QR-31.
+///
+/// One row per application, written by the examiner at step 2 and countersigned
+/// by the reviewer at step 3. Both signatures live here rather than as booleans
+/// on Application, because "who signed this form, and when" is the question the
+/// file has to answer years later, and REQ-REG-052 requires those two answers
+/// to name different people.
+model ExaminationRecord {
+  id String @id @default(cuid())
+
+  applicationId String      @unique
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+
+  examinerUserId String
+  examiner       User   @relation("ExaminationExaminer", fields: [examinerUserId], references: [id], onDelete: Restrict)
+
+  /// REQ-REG-051 — "original/copy count".
+  originalCount Int @default(1)
+  copyCount     Int @default(0)
+
+  /// REQ-REG-051 — brokerage nature as the examiner reads it off the file,
+  /// which is not necessarily what the applicant requested. A divergence is
+  /// exactly what the reviewer needs to see.
+  brokerageNature BrokerType[]
+
+  /// The validity the examiner proposes for the registration. Applied at
+  /// issuance if the reviewer approves.
+  proposedValidFrom DateTime?
+  proposedValidTo   DateTime?
+
+  recommendation ExaminerRecommendation?
+  examinerNote   String?
+  /// The examiner's signature and date, as printed on the form.
+  signedAt       DateTime?
+
+  reviewerUserId String?
+  reviewer       User?   @relation("ExaminationReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
+  reviewerNote   String?
+  reviewSignedAt DateTime?
+
+  fieldChecks ExaminationFieldCheck[]
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([examinerUserId])
+  @@index([reviewerUserId])
+  @@map("examination_record")
+}
+
+/// One line of the internal review form, verified or not.
+///
+/// The obvious implementation is a `verified: true` on the whole record, and it
+/// is the wrong one. REQ-REG-051 lists sixteen distinct facts the examiner
+/// checks against the documents; a single flag records that somebody clicked,
+/// not what they looked at. Itemising makes "approved while the tax number was
+/// never checked against the tax card" a computable fact rather than an
+/// unanswerable question — the same reasoning that itemises الاستيفاءات.
+model ExaminationFieldCheck {
+  id String @id @default(cuid())
+
+  examinationRecordId String            @map("examination_record_id")
+  examinationRecord   ExaminationRecord @relation(fields: [examinationRecordId], references: [id], onDelete: Restrict)
+
+  /// Key into the EXAMINATION_FORM rule set.
+  fieldKey String
+
+  verified Boolean @default(false)
+  note     String?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@unique([examinationRecordId, fieldKey])
+  @@map("examination_field_check")
+}
+
+/// REQ-REG-050 step 4 — fees recorded, never processed.
+///
+/// 02-SYSTEM-ARCHITECTURE §11: "No payment processing. Fees are recorded; money
+/// moves through existing channels." So this is a receipt written down, with
+/// the bank and branch the paper form asks for, and nothing that touches money.
+model FeeRecord {
+  id String @id @default(cuid())
+
+  applicationId String      @unique
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+
+  paymentMethod PaymentMethod
+  /// Required by the form for a cheque; meaningless for cash.
+  bankName      String?
+  bankBranch    String?
+  chequeNumber  String?
+
+  receiptNumber String
+
+  /// The sum of the lines, stored so a later change to a line is detectable.
+  totalAmount Decimal @db.Decimal(18, 2)
+
+  recordedByUserId String
+  recordedBy       User   @relation("FeeRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+  recordedAt       DateTime @default(now())
+
+  lines FeeLine[]
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@map("fee_record")
+}
+
+/// One fee heading from REQ-REG-030's list of eight, with the amount taken.
+/// The headings are versioned rule data (FEE_SCHEDULE); the amounts are what
+/// the treasurer actually received, which is not a threshold and does not
+/// belong in a rule set.
+model FeeLine {
+  id String @id @default(cuid())
+
+  feeRecordId String    @map("fee_record_id")
+  feeRecord   FeeRecord @relation(fields: [feeRecordId], references: [id], onDelete: Restrict)
+
+  /// Key into the FEE_SCHEDULE rule set.
+  feeKey String
+  amount Decimal @db.Decimal(18, 2)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@unique([feeRecordId, feeKey])
+  @@map("fee_line")
+}
+
+/// REQ-REG-050 steps 5 and 6 — the card issued, and the card delivered.
+///
+/// One row, two moments, because the second is meaningless without the first
+/// and the delivery ledger's serial number is the only thing that ties a
+/// physical card in someone's hand back to this file.
+model CardIssuance {
+  id String @id @default(cuid())
+
+  applicationId String      @unique
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+
+  registrationId String       @unique
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+
+  /// The rendered card. Hashed and content-addressed like every other
+  /// document, so the Authority can prove the card it issued is the card the
+  /// broker is holding.
+  documentId String?
+  document   Document? @relation(fields: [documentId], references: [id], onDelete: Restrict)
+
+  issuedByUserId String
+  issuedBy       User   @relation("CardIssuedBy", fields: [issuedByUserId], references: [id], onDelete: Restrict)
+  issuedAt       DateTime @default(now())
+
+  // ── Step 6, delivery ────────────────────────────────────────────────────
+  /// The serial in the delivery ledger (سجل التسليم).
+  deliverySerial   String?   @unique
+  deliveredToName  String?
+  deliveredAt      DateTime?
+  deliveredByUserId String?
+  deliveredBy       User?    @relation("CardDeliveredBy", fields: [deliveredByUserId], references: [id], onDelete: Restrict)
+
+  /// REQ-REG-050 step 5 — "recipient acknowledges the renewal date and the
+  /// obligation to print the number on all output". Two separate
+  /// acknowledgements because they are two separate obligations, and because
+  /// REQ-REG-061 is enforced against the second one.
+  renewalDateAcknowledged     Boolean @default(false)
+  numberObligationAcknowledged Boolean @default(false)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([issuedAt])
+  @@map("card_issuance")
+}
+
+/// REQ-REG-050 steps 7 and 8 — data extraction, then archiving.
+///
+/// The last two hands the paper file passes through. They decide nothing, and
+/// that is exactly why they are recorded: a file that reached delivery and then
+/// vanished before the archive is the gap an inspector asks about.
+model FileHandlingRecord {
+  id String @id @default(cuid())
+
+  applicationId String      @unique
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+
+  // ── Step 7, data (مدير إدارة البيانات) ──────────────────────────────────
+  dataExtractedByUserId String?
+  dataExtractedBy       User?   @relation("FileDataExtractedBy", fields: [dataExtractedByUserId], references: [id], onDelete: Restrict)
+  dataExtractedAt       DateTime?
+  dataNote              String?
+
+  // ── Step 8, archive (رئيس قسم الملفات) ──────────────────────────────────
+  archivedByUserId String?
+  archivedByUser   User?   @relation("FileArchivedBy", fields: [archivedByUserId], references: [id], onDelete: Restrict)
+  filedAt          DateTime?
+  /// The page count entered in the archive register, checked against the count
+  /// the registry clerk recorded at intake. A mismatch is the point of asking.
+  pageCount        Int?
+  /// The serial and alphabetical registers the file is indexed in.
+  serialRegisterNo   String?
+  alphabeticalIndex  String?
+  fileReference      String?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@map("file_handling_record")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AML supervision
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// REQ-AML-010 — the compliance manager and the deputy, each as a tenure with
+/// a start and an end. Never overwritable columns: appointment history is the
+/// point, and cross-entity reuse of one individual is an integrity signal.
+model ComplianceOfficerTenure {
+  id String @id @default(cuid())
+
+  brokerEntityId String
+  brokerEntity   BrokerEntity @relation(fields: [brokerEntityId], references: [id], onDelete: Restrict)
+
+  partyId String
+  party   Party  @relation(fields: [partyId], references: [id], onDelete: Restrict)
+
+  role ComplianceRole
+
+  startedOn DateTime
+  endedOn   DateTime?
+
+  /// REQ-AML-011 — senior functional level, qualifications, experience.
+  functionalLevel String?
+  qualifications  String?
+  experienceYears Int?
+
+  /// REQ-AML-010 — both the Unit and the supervisory authority must be
+  /// notified. Two separate obligations, tracked separately.
+  authorityNotifiedAt DateTime?
+  unitNotifiedAt      DateTime?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([brokerEntityId, role, startedOn])
+  @@index([partyId])
+  @@map("compliance_officer_tenure")
+}
+
+/// REQ-AML-050 — training programmes, at least annually.
+/// Retention clock: end of the training programme (REQ-AML-030 row و).
+model TrainingRecord {
+  id String @id @default(cuid())
+
+  brokerEntityId String
+  brokerEntity   BrokerEntity @relation(fields: [brokerEntityId], references: [id], onDelete: Restrict)
+
+  programmeTitle  String
+  provider        String
+  providerIsLocal Boolean @default(true)
+  content         String?
+  durationHours   Int?
+
+  startedOn DateTime
+  endedOn   DateTime
+
+  attendeeCount Int?
+  /// Names, sections, and departments of attendees, per REQ-AML-030 row و.
+  attendees     Json?
+
+  unitNotifiedAt DateTime?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([brokerEntityId, endedOn])
+  @@map("training_record")
+}
+
+/// Supervisory inspection. Checklists derive from REQ-AML-040.
+model Inspection {
+  id String @id @default(cuid())
+
+  brokerEntityId String
+  brokerEntity   BrokerEntity @relation(fields: [brokerEntityId], references: [id], onDelete: Restrict)
+
+  inspectorUserId String
+  inspector       User   @relation("InspectionInspector", fields: [inspectorUserId], references: [id], onDelete: Restrict)
+
+  status      InspectionStatus @default(SCHEDULED)
+  scheduledOn DateTime
+  conductedOn DateTime?
+  isFieldVisit Boolean @default(false)
+
+  /// The checklist rule-set version used, so a past inspection stays
+  /// re-explainable against the controls in force at the time.
+  checklistRuleSetId String?
+  checklistRuleSet   RuleSet? @relation(fields: [checklistRuleSetId], references: [id], onDelete: Restrict)
+
+  findings Finding[]
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([brokerEntityId, scheduledOn])
+  @@index([status, scheduledOn])
+  @@map("inspection")
+}
+
+model Finding {
+  id String @id @default(cuid())
+
+  inspectionId String
+  inspection   Inspection @relation(fields: [inspectionId], references: [id], onDelete: Restrict)
+
+  /// The REQ-AML-040 checklist item this finding answers.
+  checklistItemKey String?
+  descriptionAr    String
+  descriptionEn    String?
+  severity         SignalSeverity @default(MEDIUM)
+
+  status FindingStatus @default(OPEN)
+
+  remediationDueOn DateTime?
+  remediatedOn     DateTime?
+  remediationNote  String?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([inspectionId, status])
+  @@map("finding")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Documents
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// First-class, hashed, versioned, immutable. §7:
+/// "A replacement creates a new version and supersedes the old one; it never
+/// overwrites. The hash is what allows the Authority to prove that the document
+/// reviewed in March is byte-identical to the one in the archive today."
+model Document {
+  id String @id @default(cuid())
+
+  /// What this file is. An applicant's upload answers a checklist item; a card
+  /// the Authority issued answers none, and must not be counted as though it
+  /// satisfied one.
+  kind DocumentKind @default(APPLICANT_UPLOAD)
+
+  /// Key into the DOC_CHECKLIST rule set — what this document is *for*.
+  /// Null for anything the Authority itself generated.
+  checklistItemKey String?
+
+  applicationId String?
+  application   Application? @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+
+  /// SHA-256 of the bytes, lowercase hex. The content-addressed storage key is
+  /// derived from this, so identical bytes are stored exactly once.
+  sha256      String
+  storageKey  String
+  sizeBytes   Int
+  mimeType    String
+  originalFilename String?
+
+  /// Supersession chain. A new version points at the one it replaces; the
+  /// superseded row stays exactly where it was.
+  supersedesDocumentId String?   @unique
+  supersedes           Document? @relation("DocumentSupersession", fields: [supersedesDocumentId], references: [id], onDelete: Restrict)
+  supersededBy         Document? @relation("DocumentSupersession")
+  version              Int       @default(1)
+
+  uploadedByUserId String
+  uploadedBy       User   @relation(fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+  uploadedAt       DateTime @default(now())
+
+  completions   Completion[]
+  cardIssuances CardIssuance[]
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([applicationId, checklistItemKey])
+  @@index([applicationId, kind])
+  @@index([sha256])
+  @@map("document")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Integrity signals
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 00-VISION §5 and §8. A signal is triage, not a verdict.
+///
+/// Nothing here triggers an automatic action. Disposition requires a written
+/// reason; escalation creates a case. Both are audited. The interface says so
+/// in words, on the screen.
+model Signal {
+  id String @id @default(cuid())
+
+  signalType String
+  family     SignalFamily
+  severity   SignalSeverity @default(MEDIUM)
+  state      SignalState    @default(OPEN)
+
+  /// What the signal is about. Nullable per subject kind — a signal may
+  /// concern an application, a contract, a broker, or an official.
+  applicationId String?
+  application   Application? @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+
+  brokerageContractId String?
+  brokerageContract   BrokerageContract? @relation(fields: [brokerageContractId], references: [id], onDelete: Restrict)
+
+  subjectType String?
+  subjectId   String?
+
+  /// The evidence that produced it — the facts, so a human can check the
+  /// reasoning rather than trust the score.
+  evidence Json
+
+  /// The rule-set version the computation used.
+  ruleSetId String?
+  ruleSet   RuleSet? @relation(fields: [ruleSetId], references: [id], onDelete: Restrict)
+
+  detectedAt DateTime @default(now())
+
+  disposedByUserId String?
+  disposedBy       User?   @relation("SignalDisposedBy", fields: [disposedByUserId], references: [id], onDelete: Restrict)
+  disposedAt       DateTime?
+  /// Mandatory on dismissal. A signal cannot be closed silently.
+  dispositionReason String?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([state, severity, detectedAt])
+  @@index([family, state])
+  @@index([signalType])
+  @@map("signal")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Versioned regulatory configuration
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 02-SYSTEM-ARCHITECTURE §6. Regulatory thresholds are data with an effective
+/// date, never constants in code.
+///
+/// "A decision taken in March is forever re-explainable against the March
+/// rules, even after a decree amends them in October. This is not a nicety —
+/// it is what makes a decision defensible to an inspector."
+model RuleSet {
+  id          String @id @default(cuid())
+  code        String
+  version     Int
+  description String?
+
+  /// The instrument this encodes — "D578 Article 2", "RC §خامساً".
+  legalSource String?
+  /// The REQ-* IDs from 01-LEGAL-REFERENCE.md this rule set implements.
+  requirementIds String[]
+
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  publishedByUserId String?
+  publishedBy       User?   @relation(fields: [publishedByUserId], references: [id], onDelete: Restrict)
+  publishedAt       DateTime @default(now())
+
+  items         RuleItem[]
+  registrations Registration[]
+  declarations  Declaration[]
+  signals       Signal[]
+  inspections   Inspection[]
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@unique([code, version])
+  @@index([code, effectiveFrom, effectiveTo])
+  @@map("rule_set")
+}
+
+model RuleItem {
+  id String @id @default(cuid())
+
+  ruleSetId String
+  ruleSet   RuleSet @relation(fields: [ruleSetId], references: [id], onDelete: Restrict)
+
+  key      String
+  /// Ordering for checklists and declaration lists, where sequence matters.
+  position Int     @default(0)
+
+  /// The rule's content. Thresholds, bands, wording, periods — all here, and
+  /// nowhere in the TypeScript.
+  payload Json
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@unique([ruleSetId, key])
+  @@index([ruleSetId, position])
+  @@map("rule_item")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Audit
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Append-only and hash-chained. §7:
+/// "Each row stores the SHA-256 of the previous row's canonical form plus its
+/// own payload, so any tampering breaks the chain and is detectable."
+///
+/// `seq` is a gapless monotonic counter, assigned under an advisory lock so
+/// two concurrent writers cannot produce two rows claiming the same
+/// predecessor. Rows are never updated and never deleted — src/lib/audit is
+/// the only writer, and it has no update or delete path.
+model AuditEvent {
+  id  String @id @default(cuid())
+  seq BigInt @unique
+
+  occurredAt DateTime @default(now())
+
+  actorUserId String?
+  actor       User?   @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  actorRole   Role?
+  /// Retained as text as well as by relation, so the trail stays readable even
+  /// if an account is later renamed.
+  actorLabel  String?
+
+  accessType AuditAccessType @default(WRITE)
+  action     String
+
+  entityType String
+  entityId   String?
+
+  fromState String?
+  toState   String?
+  reason    String?
+
+  ipAddress String?
+  userAgent String?
+
+  /// The rule-set versions in force when the event happened.
+  ruleSetVersions Json?
+  /// Anything else the action needs to evidence, already redacted of content
+  /// that must not be retained.
+  payload Json?
+
+  /// SHA-256 hex of the previous row's `hash`; 64 zeros for the genesis row.
+  prevHash String
+  /// SHA-256 hex over this row's canonical form, including prevHash.
+  hash     String @unique
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([entityType, entityId, occurredAt])
+  @@index([actorUserId, occurredAt])
+  @@index([action, occurredAt])
+  @@index([accessType, occurredAt])
+  @@map("audit_event")
+}
+
+/// §7 — legal hold. A record under hold cannot be archived at all, regardless
+/// of date, until the hold is lifted with a reason. Holds are themselves
+/// records: placing and lifting are both permanent.
+model LegalHold {
+  id String @id @default(cuid())
+
+  entityType String
+  entityId   String
+
+  reason      String
+  placedByUserId String
+  placedBy       User   @relation(fields: [placedByUserId], references: [id], onDelete: Restrict)
+  placedAt       DateTime @default(now())
+
+  liftedAt     DateTime?
+  liftedReason String?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([entityType, entityId, liftedAt])
+  @@map("legal_hold")
+}

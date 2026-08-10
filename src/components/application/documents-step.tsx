@@ -1,0 +1,344 @@
+'use client'
+
+import * as React from 'react'
+import { useLocale, useTranslations } from 'next-intl'
+import { useRouter } from '@/i18n/navigation'
+import { cn } from '@/lib/cn'
+import { Button } from '@/components/ui/button'
+import { BlockedAction } from '@/components/ui/notice'
+import { Status } from '@/components/ui/status'
+import { Stamp } from '@/components/ui/bidi'
+import { Check, Icon, Info } from '@/components/ui/icon'
+import type { RuleViolation } from '@/lib/rules/violation'
+import { WhyWeAsk } from './why-we-ask'
+
+/**
+ * Step 6 — documents.
+ *
+ * The step where a broker on a phone either succeeds or drives to a GOEIC
+ * branch, so the decisions here are about the phone specifically:
+ *
+ *   · **One tap to the camera.** `capture="environment"` on a file input opens
+ *     the rear camera directly, skipping the gallery picker. That single
+ *     attribute is the difference between "photograph your commercial register"
+ *     and "photograph it, find it in your gallery, and select it".
+ *   · **The photo is shown back, large.** The commonest failure is a legible
+ *     photo of the wrong page, or an illegible photo of the right one, and
+ *     neither is detectable from a filename. The image comes back through the
+ *     authorised, audited document route — the same bytes the examiner will
+ *     see, not a local preview that might differ.
+ *   · **Real progress, from the real upload.** `XMLHttpRequest` rather than
+ *     `fetch`, because only XHR reports upload progress, and a six-megabyte
+ *     photo on a mobile connection with a spinner that says nothing is a photo
+ *     the applicant cancels halfway.
+ *   · **Failure says what to do.** An oversized or wrong-format file comes back
+ *     as the four-part refusal from the server, with the actual limit in it.
+ *
+ * Drag and drop is added on top for the desktop case. It is never the only way
+ * to do anything.
+ */
+
+export interface DocumentItem {
+  key: string
+  label: string
+  description: string | null
+  required: boolean
+  acceptedMimeTypes: string[]
+  maxSizeMb: number
+  document: {
+    id: string
+    mimeType: string
+    sizeBytes: number
+    uploadedAt: string
+    version: number
+  } | null
+}
+
+type ItemState =
+  | { phase: 'idle' }
+  | { phase: 'uploading'; percent: number }
+  | { phase: 'failed'; violation: RuleViolation | null }
+
+export function DocumentsStep({
+  applicationId,
+  items,
+  continueHref,
+}: {
+  applicationId: string
+  items: DocumentItem[]
+  continueHref: string
+}) {
+  const t = useTranslations('apply')
+  const router = useRouter()
+  const [states, setStates] = React.useState<Record<string, ItemState>>({})
+
+  const required = items.filter((i) => i.required)
+  const supplied = required.filter((i) => i.document)
+
+  const upload = React.useCallback(
+    (key: string, file: File) => {
+      setStates((s) => ({ ...s, [key]: { phase: 'uploading', percent: 0 } }))
+
+      const body = new FormData()
+      body.append('file', file)
+      body.append('checklistItemKey', key)
+
+      const request = new XMLHttpRequest()
+      request.open('POST', `/api/applications/${applicationId}/documents`)
+
+      request.upload.addEventListener('progress', (event) => {
+        if (!event.lengthComputable) return
+        setStates((s) => ({
+          ...s,
+          [key]: { phase: 'uploading', percent: Math.round((event.loaded / event.total) * 100) },
+        }))
+      })
+
+      request.addEventListener('load', () => {
+        if (request.status >= 200 && request.status < 300) {
+          setStates((s) => ({ ...s, [key]: { phase: 'idle' } }))
+          // Re-render from the server, so what appears is what the register
+          // actually holds rather than what the browser hopes it holds.
+          router.refresh()
+          return
+        }
+
+        let violation: RuleViolation | null = null
+        try {
+          violation = JSON.parse(request.responseText)?.violation ?? null
+        } catch {
+          violation = null
+        }
+        setStates((s) => ({ ...s, [key]: { phase: 'failed', violation } }))
+      })
+
+      request.addEventListener('error', () => {
+        setStates((s) => ({ ...s, [key]: { phase: 'failed', violation: null } }))
+      })
+
+      request.send(body)
+    },
+    [applicationId, router],
+  )
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm font-medium text-ink-muted" aria-live="polite">
+        {t('documentsProgress', { done: supplied.length, total: required.length })}
+      </p>
+
+      {items.map((item) => (
+        <DocumentCard
+          key={item.key}
+          item={item}
+          state={states[item.key] ?? { phase: 'idle' }}
+          onFile={(file) => upload(item.key, file)}
+          onDismissFailure={() => setStates((s) => ({ ...s, [item.key]: { phase: 'idle' } }))}
+        />
+      ))}
+
+      <WhyWeAsk label={t('whyWeAsk')}>{t('whyDocuments')}</WhyWeAsk>
+
+      <div className="border-t border-rule pt-5">
+        <Button size="touch" asChild>
+          <a href={continueHref}>{t('saveAndContinue')}</a>
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function DocumentCard({
+  item,
+  state,
+  onFile,
+  onDismissFailure,
+}: {
+  item: DocumentItem
+  state: ItemState
+  onFile: (file: File) => void
+  onDismissFailure: () => void
+}) {
+  const t = useTranslations('apply')
+  const tCommon = useTranslations('common')
+  const tBlocked = useTranslations('blocked')
+  const locale = useLocale() as 'ar' | 'en'
+  const [dragOver, setDragOver] = React.useState(false)
+
+  const cameraRef = React.useRef<HTMLInputElement>(null)
+  const fileRef = React.useRef<HTMLInputElement>(null)
+
+  const accept = item.acceptedMimeTypes.join(',')
+  const isImage = item.document?.mimeType.startsWith('image/') ?? false
+  const busy = state.phase === 'uploading'
+
+  return (
+    <section
+      className={cn(
+        'border bg-paper',
+        item.document ? 'border-rule' : item.required ? 'border-rule-strong' : 'border-rule',
+        dragOver && 'border-2 border-navy-600 bg-navy-50',
+      )}
+      onDragOver={(event) => {
+        event.preventDefault()
+        setDragOver(true)
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={(event) => {
+        event.preventDefault()
+        setDragOver(false)
+        const file = event.dataTransfer.files[0]
+        if (file) onFile(file)
+      }}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-4 py-3">
+        <div className="min-w-0">
+          <h3 className="text-md font-medium text-ink">{item.label}</h3>
+          {item.description ? (
+            <p className="mt-0.5 max-w-reading text-sm text-ink-muted">{item.description}</p>
+          ) : null}
+        </div>
+
+        {item.document ? (
+          <Status tone="confirmed">{t('documentsSupplied')}</Status>
+        ) : item.required ? (
+          <Status tone="caution">{t('documentsOutstanding')}</Status>
+        ) : (
+          <Status tone="neutral">{t('documentsOptional')}</Status>
+        )}
+      </div>
+
+      {item.document ? (
+        <div className="border-t border-rule px-4 py-3">
+          {isImage ? (
+            /*
+              Shown at a size somebody can actually read. A 96px thumbnail
+              confirms that *a* photograph exists, which is not the question —
+              the question is whether the registration number on it is legible,
+              and that needs the whole width of the screen.
+            */
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`/api/documents/${item.document.id}`}
+              alt={item.label}
+              className="max-h-96 w-full border border-rule bg-paper-sunk object-contain"
+            />
+          ) : (
+            <a
+              href={`/api/documents/${item.document.id}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-navy-600 hover:underline"
+            >
+              <Icon as={Check} size="sm" className="text-confirmed" />
+              {t('viewFile')}
+            </a>
+          )}
+
+          <p className="mt-2 flex flex-wrap items-center gap-x-1.5 text-xs text-ink-faint">
+            <span>{formatBytes(item.document.sizeBytes, locale)}</span>
+            <span aria-hidden="true">·</span>
+            <span>{t('uploadedOn')}</span>
+            <Stamp value={item.document.uploadedAt} />
+          </p>
+          {item.document.version > 1 ? (
+            <p className="mt-1 flex items-start gap-1.5 text-xs text-ink-faint">
+              <Icon as={Info} size="xs" className="mt-px" />
+              <span>{t('versionNote', { n: item.document.version })}</span>
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {state.phase === 'failed' ? (
+        <div className="border-t border-rule p-4">
+          {state.violation ? (
+            <BlockedAction
+              what={locale === 'ar' ? state.violation.ar.blocked : state.violation.en.blocked}
+              why={locale === 'ar' ? state.violation.ar.why : state.violation.en.why}
+              nextStep={locale === 'ar' ? state.violation.ar.nextStep : state.violation.en.nextStep}
+              whoToAsk={locale === 'ar' ? state.violation.ar.whoToAsk : state.violation.en.whoToAsk}
+              headings={{
+                what: tBlocked('whatHeading'),
+                why: tBlocked('whyHeading'),
+                next: tBlocked('nextHeading'),
+                who: tBlocked('whoHeading'),
+              }}
+            />
+          ) : (
+            <p role="alert" className="text-sm text-blocking">
+              {t('uploadFailed')}
+            </p>
+          )}
+          <Button size="touch" variant="secondary" className="mt-3" onClick={onDismissFailure}>
+            {tCommon('close')}
+          </Button>
+        </div>
+      ) : null}
+
+      {busy ? (
+        <div className="border-t border-rule px-4 py-3">
+          <p className="text-sm text-ink-muted">{t('uploading')}</p>
+          <div
+            className="mt-2 h-2 w-full bg-rule"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={state.percent}
+          >
+            <div className="h-full bg-navy-600 transition-[width]" style={{ width: `${state.percent}%` }} />
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2 border-t border-rule px-4 py-3">
+          <Button
+            type="button"
+            size="touch"
+            variant={item.document ? 'secondary' : 'primary'}
+            onClick={() => cameraRef.current?.click()}
+          >
+            {t('capturePhoto')}
+          </Button>
+          <Button type="button" size="touch" variant="secondary" onClick={() => fileRef.current?.click()}>
+            {item.document ? t('replaceFile') : t('chooseFile')}
+          </Button>
+
+          {/* Two inputs, not one. `capture` on a single input would force the
+              camera on desktop, where there frequently is not one, and remove
+              the ability to pick an existing PDF at all. */}
+          <input
+            ref={cameraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="sr-only"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0]
+              if (file) onFile(file)
+              event.currentTarget.value = ''
+            }}
+          />
+          <input
+            ref={fileRef}
+            type="file"
+            accept={accept}
+            className="sr-only"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0]
+              if (file) onFile(file)
+              event.currentTarget.value = ''
+            }}
+          />
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** Sizes in the reader's language, with the number kept Latin. */
+function formatBytes(bytes: number, locale: 'ar' | 'en'): string {
+  const mb = bytes / (1024 * 1024)
+  if (mb >= 1) return `${mb.toFixed(1)} ${locale === 'ar' ? 'م.ب' : 'MB'}`
+  const kb = Math.max(1, Math.round(bytes / 1024))
+  return `${kb} ${locale === 'ar' ? 'ك.ب' : 'KB'}`
+}

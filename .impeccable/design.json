@@ -1,0 +1,168 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-08T20:00:00.000Z",
+  "title": "Design System: Osool",
+  "extensions": {
+    "colorMeta": {
+      "navy-institutional": {
+        "role": "primary",
+        "displayName": "Institutional Navy",
+        "canonical": "#0F2D53",
+        "tonalRamp": ["#061223", "#091B33", "#0C2444", "#0F2D53", "#24466F", "#4C6690", "#7F95BD", "#EEF2F8"]
+      },
+      "brass-seal": {
+        "role": "secondary",
+        "displayName": "Brass Seal",
+        "canonical": "#A7844E",
+        "tonalRamp": ["#6E5630", "#8A6D3F", "#A7844E", "#BA9963", "#CFAF76", "#E4D2AE", "#F3EAD8", "#FBF7EE"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Register Ink",
+        "canonical": "#16181D",
+        "tonalRamp": ["#16181D", "#4A5261", "#6B7383", "#C3CAD6", "#DDE1E8", "#F4F5F7", "#FAFBFC", "#FFFFFF"]
+      },
+      "confirmed": {
+        "role": "tertiary",
+        "displayName": "Confirmed Green",
+        "canonical": "#1A6B46",
+        "tonalRamp": ["#0E3A26", "#146046", "#1A6B46", "#2F8A60", "#5FAE88", "#9CCDB4", "#E6F2EB", "#F5FBF8"]
+      },
+      "blocking": {
+        "role": "tertiary",
+        "displayName": "Blocking Red",
+        "canonical": "#A32626",
+        "tonalRamp": ["#5C1515", "#7D1E1E", "#A32626", "#C04040", "#D97878", "#EDB4B4", "#FBEAEA", "#FEF6F6"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The public landing title only. One per site, not one per screen." },
+      "headline": { "displayName": "Headline", "purpose": "Back-office page titles, above the brass rule." },
+      "title": { "displayName": "Title", "purpose": "Panel headings." },
+      "body": { "displayName": "Body", "purpose": "Interface default at 15px, so Arabic is not a squint." },
+      "data": { "displayName": "Data", "purpose": "Table body at 13px. Where density is bought, deliberately and in one place." },
+      "label": { "displayName": "Label", "purpose": "Uppercase column headings and the four-part notice terms." }
+    },
+    "shadows": [
+      { "name": "dialog", "value": "0 8px 28px -6px rgb(9 27 51 / 0.28)", "purpose": "Something genuinely floating above the page." },
+      { "name": "menu", "value": "0 4px 14px -3px rgb(9 27 51 / 0.18)", "purpose": "An open dropdown." },
+      { "name": "sticky", "value": "0 1px 0 0 #C3CAD6, 0 4px 6px -4px rgb(9 27 51 / 0.15)", "purpose": "On a sticky table header: reports that rows are hidden underneath. The only non-floating shadow in the system." }
+    ],
+    "motion": [
+      { "name": "state", "value": "100ms linear", "purpose": "Background and border colour on hover. Nothing else in the product animates." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" },
+      { "name": "2xl", "value": "1536px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The committing action. 36px in the back office, 44px in the broker portal.",
+      "html": "<button class=\"ds-btn-primary\">حفظ القيد</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;gap:.5rem;min-height:2.25rem;padding:0 .875rem;border:1px solid #0F2D53;border-radius:2px;background:#0F2D53;color:#fff;font-size:.9375rem;font-weight:500;font-family:inherit;cursor:pointer;transition:background-color .1s linear,border-color .1s linear}.ds-btn-primary:hover{background:#0C2444;border-color:#0C2444}.ds-btn-primary:focus-visible{outline:2px solid #0F2D53;outline-offset:2px}.ds-btn-primary:disabled{background:#F4F5F7;border-color:#DDE1E8;color:#6B7383;cursor:not-allowed}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "The alternative action. Bordered on paper, never filled.",
+      "html": "<button class=\"ds-btn-secondary\">العودة إلى لوحة العمل</button>",
+      "css": ".ds-btn-secondary{display:inline-flex;align-items:center;gap:.5rem;min-height:2.25rem;padding:0 .875rem;border:1px solid #C3CAD6;border-radius:2px;background:#fff;color:#16181D;font-size:.9375rem;font-weight:500;font-family:inherit;cursor:pointer;transition:background-color .1s linear,border-color .1s linear}.ds-btn-secondary:hover{background:#EEF2F8;border-color:#7F95BD}.ds-btn-secondary:focus-visible{outline:2px solid #0F2D53;outline-offset:2px}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "44px, so one control set serves the back office and the phone. The LTR isolation stops 2026/1183 rendering as 1183/2026.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">رقم القيد</span><input class=\"ds-input\" dir=\"ltr\" placeholder=\"2026/1183\"></label>",
+      "css": ".ds-field{display:flex;flex-direction:column;gap:.375rem}.ds-field-label{font-size:.8125rem;font-weight:500;color:#16181D}.ds-input{width:100%;min-height:2.75rem;padding:.5rem .75rem;border:1px solid #C3CAD6;border-radius:2px;background:#fff;color:#16181D;font-size:.9375rem;font-family:inherit;direction:ltr;unicode-bidi:isolate;font-variant-numeric:tabular-nums}.ds-input::placeholder{color:#6B7383}.ds-input:focus-visible{border-color:#0F2D53;outline:2px solid #0F2D53;outline-offset:0}.ds-input[aria-invalid=true]{border:2px solid #A32626}"
+    },
+    {
+      "name": "Status Pill",
+      "kind": "chip",
+      "refersTo": "status-confirmed",
+      "description": "Icon, colour, and word together. Remove any two and it still reads — these decisions have legal consequences.",
+      "html": "<span class=\"ds-status ds-status-confirmed\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg>مقيَّد</span> <span class=\"ds-status ds-status-blocking\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"m4.9 4.9 14.2 14.2\"/></svg>موقوف</span>",
+      "css": ".ds-status{display:inline-flex;align-items:center;gap:.375rem;padding:.125rem .5rem;border:1px solid;border-radius:2px;font-size:.75rem;font-weight:500;white-space:nowrap}.ds-status svg{width:.875rem;height:.875rem;flex-shrink:0}.ds-status-confirmed{background:#E6F2EB;color:#1A6B46;border-color:rgba(26,107,70,.3)}.ds-status-blocking{background:#FBEAEA;color:#A32626;border-color:rgba(163,38,38,.3)}"
+    },
+    {
+      "name": "Sidebar Item",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "The active entry is marked three ways at once — surface, weight, and the brass fluting on the inline-start edge — because on the navy chrome a background change alone is nearly invisible on a bad monitor.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-item ds-nav-item-active\" aria-current=\"page\">سجل التدقيق</a><a class=\"ds-nav-item\">لوحة العمل</a></nav>",
+      "css": ".ds-nav{background:#0C2444;padding:.75rem;display:flex;flex-direction:column;gap:.125rem}.ds-nav-item{display:flex;align-items:center;gap:.625rem;min-height:2.25rem;padding:.375rem .75rem;border-radius:2px;color:#A9BCD8;font-size:.9375rem;text-decoration:none;cursor:pointer;transition:background-color .1s linear,color .1s linear}.ds-nav-item:hover{background:#1A3A63;color:#fff}.ds-nav-item-active{background:#24466F;color:#fff;font-weight:600;border-inline-start:2px solid #BA9963;padding-inline-start:.625rem}.ds-nav-item:focus-visible{outline:2px solid #CFAF76;outline-offset:2px}"
+    },
+    {
+      "name": "Four-Part Notice",
+      "kind": "custom",
+      "refersTo": "panel",
+      "description": "The signature component. Every refusal states what is blocked, why with the rule named, the exact next step, and who to ask. All four props are required, so a bare error cannot be shipped through it.",
+      "html": "<section class=\"ds-notice\"><div class=\"ds-notice-band\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"m4.9 4.9 14.2 14.2\"/></svg><div><p class=\"ds-notice-term\">ما هو ممنوع</p><p class=\"ds-notice-what\">لا يمكن تقديم هذا الطلب.</p></div></div><dl class=\"ds-notice-body\"><div><dt class=\"ds-notice-term\">السبب</dt><dd class=\"ds-notice-text\">رأس المال المدفوع 30,000 ج.م لا يبلغ الحد الأدنى للفئة ج.</dd></div><div><dt class=\"ds-notice-term\">الخطوة التالية</dt><dd class=\"ds-notice-text\">ارفع رأس المال المسجَّل، أو تقدَّم تحت الفئة د.</dd></div><div><dt class=\"ds-notice-term\">لمن تتوجه</dt><dd class=\"ds-notice-text\">كاتب القيد بالهيئة.</dd></div></dl></section>",
+      "css": ".ds-notice{border:1px solid rgba(163,38,38,.3);background:#fff;font-family:inherit}.ds-notice-band{display:flex;align-items:flex-start;gap:.625rem;padding:.75rem 1rem;background:#FBEAEA;border-block-end:1px solid rgba(163,38,38,.3)}.ds-notice-band svg{width:1.25rem;height:1.25rem;color:#A32626;flex-shrink:0;margin-block-start:1px}.ds-notice-term{margin:0;font-size:.6875rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#6B7383}.ds-notice-what{margin:0;font-size:1rem;font-weight:600;color:#16181D}.ds-notice-body{margin:0}.ds-notice-body>div{padding:.75rem 1rem;border-block-start:1px solid #DDE1E8}.ds-notice-body>div:first-child{border-block-start:0}.ds-notice-text{margin:.125rem 0 0;font-size:.9375rem;color:#16181D}"
+    },
+    {
+      "name": "Data Table",
+      "kind": "custom",
+      "refersTo": "panel",
+      "description": "Sticky header with the sticky shadow, zebra banding, and declared column widths under table-layout: fixed.",
+      "html": "<div class=\"ds-table-wrap\"><table class=\"ds-table\"><thead><tr><th style=\"width:4rem\">التسلسل</th><th>الإجراء</th><th style=\"width:8rem\">الكيان</th></tr></thead><tbody><tr><td>65</td><td>RULE_SET_PUBLISHED</td><td>RuleSet</td></tr><tr><td>64</td><td>AUDIT_TRAIL_VIEWED</td><td>AuditEvent</td></tr><tr><td>63</td><td>SYSTEM_BOOTSTRAP</td><td>User</td></tr></tbody></table></div>",
+      "css": ".ds-table-wrap{overflow-x:auto;border:1px solid #DDE1E8;background:#fff}.ds-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:.8125rem}.ds-table th{position:sticky;inset-block-start:0;background:#F4F5F7;padding:.5rem .75rem;text-align:start;font-size:.6875rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#4A5261;border-block-end:1px solid #C3CAD6;box-shadow:0 1px 0 0 #C3CAD6,0 4px 6px -4px rgba(9,27,51,.15)}.ds-table td{padding:.5rem .75rem;border-block-end:1px solid #DDE1E8;vertical-align:top;text-align:start}.ds-table tbody tr:nth-child(even){background:color-mix(in srgb,#F4F5F7 55%,transparent)}.ds-table tbody tr:hover{background:#EEF2F8}"
+    },
+    {
+      "name": "Page Header",
+      "kind": "custom",
+      "refersTo": "panel",
+      "description": "The one ornamental gesture in the system: a 3px brass rule echoing the abacus of the column capital in the logo.",
+      "html": "<header class=\"ds-page-header\"><h1 class=\"ds-page-title\">سجل التدقيق</h1><p class=\"ds-page-lead\">سجل غير قابل للتعديل بجميع الأحداث، مربوط بسلسلة تجزئة.</p></header>",
+      "css": ".ds-page-header{padding-block-end:1rem;margin-block-end:1.5rem;border-block-end:3px solid #A7844E}.ds-page-title{margin:0;font-size:1.375rem;font-weight:600;line-height:1.3;color:#0C2444}.ds-page-lead{margin:.375rem 0 0;max-width:42rem;font-size:.9375rem;color:#4A5261}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Register Room",
+    "overview": "The room where the official ledger is kept. Ruled lines, numbered boxes, a stamp, a column capital over the door. Everything in it is there because a record has to be found, read, and relied upon years later by someone who was not present when it was written.\n\nThe product is drawn as that room made fast. Structure does the work: rules, alignment, and a visible grid carry the design where a consumer product would reach for shadows and gradients. There is exactly one ornamental gesture in the entire system — a horizontal brass line, echoing the abacus of the column capital in the logo — and it appears under page titles, under the sign-in heading, and across the top of the printed registration card. Nothing else decorates.\n\nThe palette was sampled from the logo's pixels rather than chosen beside it, which is why the navy is a specific #0F2D53 and not a SaaS blue. The register is Arabic-first and right-to-left; English is a full mirror produced by logical properties, not a second stylesheet. Density is deliberate in the back office and deliberately relaxed in the broker portal, because an examiner working a queue all day and a broker photographing a commercial register on a phone are not the same person.",
+    "keyCharacteristics": [
+      "Structure over ornament: 1px rules and alignment instead of shadows",
+      "Radius tops out at 4px; most surfaces are square",
+      "Arabic leads; every positional value is logical, never left/right",
+      "Meaning is never carried by colour alone — every status has a drawn icon and a word",
+      "One level of surface, never two; a table sits directly in a panel",
+      "Latin runs inside Arabic are direction-isolated so a registration number cannot reverse"
+    ],
+    "rules": [
+      { "name": "The Meaning-Only Rule", "body": "Semantic colour states a fact about a record — approved, blocked, awaiting activation. It is never used to make a screen livelier, and no element is tinted because it looked plain.", "section": "colors" },
+      { "name": "The Redundant Signal Rule", "body": "Every status renders three signals at once: a drawn icon, a colour, and the word itself. Remove any two and it still reads. These decisions have legal consequences and a colour-blind examiner must read them correctly.", "section": "colors" },
+      { "name": "The One Gesture Rule", "body": "The brass horizontal rule is the only ornament in the system. If a screen needs decoration to look finished, its hierarchy is wrong.", "section": "colors" },
+      { "name": "The Isolated Run Rule", "body": "Numerals, dates, phone numbers, email addresses, registration numbers, and hashes are wrapped in a direction-isolated run. Without it the bidirectional algorithm treats the slash in 2026/1183 as neutral and renders 1183/2026, and an official reads out the wrong number.", "section": "typography" },
+      { "name": "The Reading Measure Rule", "body": "Prose is held to 42rem. A one-line description stretched across a 1500px register screen is a line nobody finishes.", "section": "typography" },
+      { "name": "The Logical-Only Rule", "body": "No left, no right, no ml-, no pr-. One stylesheet serves both directions, and a mirroring bug becomes impossible rather than merely unlikely.", "section": "layout" },
+      { "name": "The Declared Column Rule", "body": "Data tables set table-layout: fixed and declare every column width. Under the default algorithm one long unbreakable token widens its column for the entire table.", "section": "layout" },
+      { "name": "The Flat-By-Default Rule", "body": "A surface gets a border, not a shadow. If it needs elevation it must be able to name what it is floating above.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use logical properties for every positional value, without exception.",
+      "Do wrap every numeral, date, reference number, and hash in a direction-isolated run.",
+      "Do pair every status colour with a drawn icon and a text label.",
+      "Do declare column widths on data tables and set table-layout: fixed.",
+      "Do state row counts as 'showing 100 of 4,312' — the difference between 'there are a hundred' and 'you are looking at the first hundred' is the difference between a complete answer and a wrong one.",
+      "Do keep the busy spinner animating under prefers-reduced-motion. A frozen spinner says the request died.",
+      "Do give a refusal all four parts, including the ones nobody planned for: crashes and 404s."
+    ],
+    "donts": [
+      "Don't add a second level of surface. A table goes in a panel, not in a card in a panel.",
+      "Don't use a coloured 4px edge stripe on an alert or a card.",
+      "Don't carry meaning in colour alone, anywhere, for any reason.",
+      "Don't use Unicode characters as icons. Icons are drawn, from Lucide, at one stroke weight.",
+      "Don't round anything past 4px.",
+      "Don't use a shadow on something that is not floating, except the sticky table header.",
+      "Don't let nameAr ?? name decide which name leads — the reader's own language leads, in both directions.",
+      "Don't hard-code a threshold, a deadline, or a category band into a component. Those live in the versioned RuleSet tables."
+    ]
+  }
+}

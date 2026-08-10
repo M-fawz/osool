@@ -1,0 +1,36 @@
+# Local PostgreSQL for Osool development.
+#
+#   docker compose up -d      start
+#   docker compose down       stop, keeping data
+#   docker compose down -v    stop and destroy the volume (dev data only)
+#
+# Port 5433 on the host, not 5432, so this can never collide with a PostgreSQL
+# already installed on the machine.
+#
+# This file is for development only. Production runs managed PostgreSQL — see
+# docs/OPERATIONS.md.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: osool-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: osool
+      POSTGRES_PASSWORD: osool_dev_password
+      POSTGRES_DB: osool
+      # Arabic collation matters: the register sorts and searches Arabic names.
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C.UTF-8'
+    ports:
+      - '5433:5432'
+    volumes:
+      - osool_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U osool -d osool']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  osool_pgdata:
+    name: osool_pgdata
