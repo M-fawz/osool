@@ -143,7 +143,7 @@ configuration in the dashboard:
 ```json
 {
   "framework": "nextjs",
-  "installCommand": "npm install --no-audit --no-fund",
+  "installCommand": "npm ci --no-audit --no-fund",
   "buildCommand": "npm run vercel-build",
   "regions": ["fra1"]
 }
@@ -184,8 +184,8 @@ Every other account is then provisioned through the interface, by a `SYSTEM_ADMI
 [`scripts/vercel-build.mjs`](../scripts/vercel-build.mjs) and `npm run build` stays a plain
 `next build` for containers and laptops.
 
-1. **`npm install`** — see the note below on why not `npm ci`. `postinstall` runs
-   `prisma generate`.
+1. **`npm ci`** — a strict install from the lockfile, nothing resolved at deploy time.
+   `postinstall` runs `prisma generate`.
 2. **Configuration check** — `DATABASE_URL`, `BETTER_AUTH_SECRET`, `PII_ENCRYPTION_KEY`. A missing
    one stops here with a one-line message naming it.
 3. **`prisma generate`** — again, so a cached install cannot leave a stale client.
@@ -195,11 +195,9 @@ Every other account is then provisioned through the interface, by a `SYSTEM_ADMI
 Any failure stops the build. Nothing is promoted, and the deployment currently serving traffic is
 untouched — a failed push cannot take the register down.
 
-### Why `npm install` and not `npm ci`
+### Regenerating the lockfile
 
-`npm ci` is the better command and it cannot be used here. Both the first
-deployment on this pipeline and the one before it failed in three seconds at the
-install step:
+Three deployments failed in three seconds at the install step, with this:
 
 ```
 npm error code EUSAGE
@@ -209,25 +207,45 @@ npm error Missing: @emnapi/runtime@1.11.3 from lock file
 npm error Missing: @emnapi/core@1.11.3 from lock file
 ```
 
-The lockfile is not corrupt and re-running `npm install` does not fix it. Those
-two packages are dependencies of `@img/sharp-wasm32`, one of the platform
-variants of `sharp`, which Next.js pulls in for image optimisation. npm resolves
-optional dependencies against the platform it is running on, so **npm on Windows
-never descends into the wasm32 variant and never writes its dependencies into
-the lockfile** — and npm on Linux then finds them missing and refuses. Verified:
-a full re-resolution from a deleted lockfile, `--include=optional`,
-`--os=linux --cpu=x64`, and declaring the two packages explicitly all produce the
-same incomplete lockfile on Windows.
+The committed lockfile really was incomplete. It listed `@emnapi/wasi-threads`
+and `@napi-rs/wasm-runtime` at the top level while omitting `@emnapi/core` and
+`@emnapi/runtime`, which those same entries require — a lockfile that could not
+describe a valid tree on any platform. `npm ci` is the only install command that
+checks, which is why it was the only one that complained.
 
-Development happens on Windows, so a lockfile that satisfies `npm ci` on Linux
-cannot be produced here, and every future `npm install` would reintroduce the
-problem. `npm install` still reads and respects the committed lockfile; it fills
-the gaps npm itself failed to record instead of refusing. CI uses the same
-command deliberately — a CI that installs differently from the deployment is
-testing something other than the deployment.
+**It is not a Windows problem, and not a `sharp` problem.** Both were blamed
+here previously and both are wrong. npm's lockfile is platform-independent by
+design: it records every platform's optional variants, and a resolution run on
+Windows and one targeted at Linux with `--os=linux --cpu=x64 --libc=glibc`
+produce byte-identical files. Verified by generating both and diffing them.
 
-If development ever moves to Linux or WSL, regenerate the lockfile there and
-`npm ci` can be restored in both `vercel.json` and `.github/workflows/ci.yml`.
+What actually causes it: **npm rebuilds the tree from `node_modules` when one is
+present.** Regenerating the lockfile in a working checkout therefore hydrates it
+from the packages that happen to be installed on that machine — and the wasm32
+variants' dependencies are not among them, because nothing on a normal platform
+installs them. The gap gets written into the lockfile and committed. Deleting
+`package-lock.json` alone does not help; `node_modules` is still there, and npm
+still reads it.
+
+So the lockfile is regenerated **away from `node_modules`**:
+
+```bash
+# from the repository root
+mkdir ../lockgen && cp package.json ../lockgen/ && cd ../lockgen
+npm install --package-lock-only --ignore-scripts
+cp package-lock.json ../osool/            # then delete ../lockgen
+```
+
+Then, back in the repository, prove it before committing it:
+
+```bash
+npm ci        # the same strict install Vercel and CI run
+npm run ci    # typecheck, lint, no-deletes, production build
+```
+
+`npm ci` in `.github/workflows/ci.yml` is what stops this recurring: it is the
+only install that fails on a drifted lockfile, so the next time one is generated
+badly, a pull request says so instead of a production deployment.
 
 ### Where to read a failure
 
