@@ -95,7 +95,8 @@ environments it belongs to. Values are never printed in this repository.
 | `APP_URL` | Overrides the derived public address. Only needed behind a domain the platform does not report. | Any |
 | `BETTER_AUTH_URL` | Defaults to `APP_URL`. | Any |
 | `EXTRA_TRUSTED_ORIGINS` | Comma-separated extra origins allowed to post to auth — a second custom domain, say. | Any |
-| `S3_ENDPOINT` | Non-AWS S3-compatible endpoint (MinIO, a national provider). Enables path-style addressing. | Any |
+| `S3_ENDPOINT` | Non-AWS S3-compatible endpoint (MinIO, Supabase Storage, a national provider). Enables path-style addressing. | Any |
+| `S3_SESSION_TOKEN` | Only for a provider issuing temporary credentials — AWS STS, or Supabase Storage, which accepts the project ref as key id, the anon key as secret and a service-role JWT here. Not sent when empty. | Any |
 | `RUN_MIGRATIONS_ON_BUILD` | `true` makes this environment apply migrations during its build; `false` stops it. Default: production yes, preview no. | Preview |
 | `UPLOAD_MAX_REQUEST_MB` | Overrides the request-body ceiling. Derived automatically: 4.5 on a serverless host, 25 elsewhere. | Any |
 | `PDF_RENDERER` | `serverless-chromium` or `bundled-chromium`. Detected from the host; set only to force. | Any |

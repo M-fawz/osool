@@ -26,6 +26,11 @@ export class S3Driver implements StorageDriver {
             credentials: {
               accessKeyId: env.S3_ACCESS_KEY_ID,
               secretAccessKey: env.S3_SECRET_ACCESS_KEY,
+              // Only when there is one. The SDK signs an empty string rather
+              // than omitting the header, and the request is then rejected as
+              // an invalid temporary credential — which reads like a wrong
+              // secret and is not one.
+              ...(env.S3_SESSION_TOKEN ? { sessionToken: env.S3_SESSION_TOKEN } : {}),
             },
           }
         : {}),

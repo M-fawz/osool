@@ -121,6 +121,18 @@ const schema = z.object({
   S3_SECRET_ACCESS_KEY: z.string().optional().default(''),
 
   /**
+   * A session token, for providers that issue temporary credentials.
+   *
+   * On AWS this is what STS hands back with an assumed role. Supabase Storage
+   * uses the same field differently: its S3 endpoint accepts the project ref as
+   * the key id, the anon key as the secret, and a JWT here — which is how a
+   * deployment can be provisioned end to end without a human creating a key
+   * pair in a dashboard. Empty everywhere else, and omitted from the client
+   * when empty, because passing an empty token is not the same as passing none.
+   */
+  S3_SESSION_TOKEN: z.string().optional().default(''),
+
+  /**
    * The largest request body the host in front of this process will pass
    * through, in megabytes. A platform ceiling, not a regulatory one — the
    * per-document limits are versioned rule data in DOC_CHECKLIST and are
