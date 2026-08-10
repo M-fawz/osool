@@ -143,7 +143,7 @@ configuration in the dashboard:
 ```json
 {
   "framework": "nextjs",
-  "installCommand": "npm ci",
+  "installCommand": "npm install --no-audit --no-fund",
   "buildCommand": "npm run vercel-build",
   "regions": ["fra1"]
 }
@@ -184,7 +184,8 @@ Every other account is then provisioned through the interface, by a `SYSTEM_ADMI
 [`scripts/vercel-build.mjs`](../scripts/vercel-build.mjs) and `npm run build` stays a plain
 `next build` for containers and laptops.
 
-1. **`npm ci`** — exactly the lockfile. `postinstall` runs `prisma generate`.
+1. **`npm install`** — see the note below on why not `npm ci`. `postinstall` runs
+   `prisma generate`.
 2. **Configuration check** — `DATABASE_URL`, `BETTER_AUTH_SECRET`, `PII_ENCRYPTION_KEY`. A missing
    one stops here with a one-line message naming it.
 3. **`prisma generate`** — again, so a cached install cannot leave a stale client.
@@ -193,6 +194,40 @@ Every other account is then provisioned through the interface, by a `SYSTEM_ADMI
 
 Any failure stops the build. Nothing is promoted, and the deployment currently serving traffic is
 untouched — a failed push cannot take the register down.
+
+### Why `npm install` and not `npm ci`
+
+`npm ci` is the better command and it cannot be used here. Both the first
+deployment on this pipeline and the one before it failed in three seconds at the
+install step:
+
+```
+npm error code EUSAGE
+npm error `npm ci` can only install packages when your package.json and
+npm error package-lock.json ... are in sync.
+npm error Missing: @emnapi/runtime@1.11.3 from lock file
+npm error Missing: @emnapi/core@1.11.3 from lock file
+```
+
+The lockfile is not corrupt and re-running `npm install` does not fix it. Those
+two packages are dependencies of `@img/sharp-wasm32`, one of the platform
+variants of `sharp`, which Next.js pulls in for image optimisation. npm resolves
+optional dependencies against the platform it is running on, so **npm on Windows
+never descends into the wasm32 variant and never writes its dependencies into
+the lockfile** — and npm on Linux then finds them missing and refuses. Verified:
+a full re-resolution from a deleted lockfile, `--include=optional`,
+`--os=linux --cpu=x64`, and declaring the two packages explicitly all produce the
+same incomplete lockfile on Windows.
+
+Development happens on Windows, so a lockfile that satisfies `npm ci` on Linux
+cannot be produced here, and every future `npm install` would reintroduce the
+problem. `npm install` still reads and respects the committed lockfile; it fills
+the gaps npm itself failed to record instead of refusing. CI uses the same
+command deliberately — a CI that installs differently from the deployment is
+testing something other than the deployment.
+
+If development ever moves to Linux or WSL, regenerate the lockfile there and
+`npm ci` can be restored in both `vercel.json` and `.github/workflows/ci.yml`.
 
 ### Where to read a failure
 
