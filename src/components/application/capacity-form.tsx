@@ -6,7 +6,7 @@ import { saveCapacityAction } from '@/app/[locale]/application/actions'
 import { CAPACITY_ORDER, capacityLabels } from '@/lib/reference/capacities'
 import { Field, Input } from '@/components/ui/form'
 import { ChoiceGroup, ChoiceOption } from './choice'
-import { ActionForm, useFieldError } from '@/components/forms/action-form'
+import { ActionForm } from '@/components/forms/action-form'
 import { WhyWeAsk } from './why-we-ask'
 
 /**
@@ -65,11 +65,10 @@ function CapacityChoice({
   locale: 'ar' | 'en'
 }) {
   const t = useTranslations('apply')
-  const error = useFieldError('applicantCapacity')
 
   return (
     <div className="space-y-2">
-      <ChoiceGroup legend={t('capacityTitle')} description={t('capacityLead')} error={error}>
+      <ChoiceGroup legend={t('capacityTitle')} description={t('capacityLead')} errorFor="applicantCapacity">
         {CAPACITY_ORDER.map((capacity) => {
           const labels = capacityLabels[capacity]
           return (
@@ -96,7 +95,7 @@ function NameArField({ defaultValue }: { defaultValue: string | null }) {
       label={t('applicantNameAr')}
       htmlFor="applicantNameAr"
       required
-      error={useFieldError('applicantNameAr')}
+      errorFor="applicantNameAr"
     >
       <Input
         name="applicantNameAr"
@@ -117,7 +116,7 @@ function NameEnField({ defaultValue }: { defaultValue: string | null }) {
       label={t('applicantNameEn')}
       hint={tCommon('optional')}
       htmlFor="applicantNameEn"
-      error={useFieldError('applicantNameEn')}
+      errorFor="applicantNameEn"
     >
       {/* dir="ltr" on the control, not on the page. A Latin name typed into an
           RTL field puts the caret in the wrong place after every space. */}
@@ -135,7 +134,7 @@ function NationalIdField({ hasExisting }: { hasExisting: boolean }) {
         htmlFor="applicantNationalId"
         hint={hasExisting ? t('nationalIdOnFile') : undefined}
         required
-        error={useFieldError('applicantNationalId')}
+        errorFor="applicantNationalId"
       >
         {/*
           Never pre-filled, even when one is on file. The number is encrypted at
@@ -167,7 +166,7 @@ function NationalityField({ defaultValue }: { defaultValue: string | null }) {
     <Field
       label={t('applicantNationality')}
       htmlFor="applicantNationality"
-      error={useFieldError('applicantNationality')}
+      errorFor="applicantNationality"
     >
       <Input name="applicantNationality" defaultValue={defaultValue ?? 'مصري'} />
     </Field>

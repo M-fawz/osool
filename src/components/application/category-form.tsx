@@ -7,7 +7,7 @@ import { saveCategoryAction } from '@/app/[locale]/application/actions'
 import { Field, Input } from '@/components/ui/form'
 import { Notice } from '@/components/ui/notice'
 import { ChoiceGroup, ChoiceOption } from './choice'
-import { ActionForm, useFieldError } from '@/components/forms/action-form'
+import { ActionForm } from '@/components/forms/action-form'
 import { WhyWeAsk } from './why-we-ask'
 
 /**
@@ -86,7 +86,7 @@ export function CategoryForm({
         <ChoiceGroup
           legend={t('typesHeading')}
           description={t('typesLead')}
-          error={useFieldError('requestedTypes')}
+          errorFor="requestedTypes"
         >
           {types.map((type) => (
             <ChoiceOption
@@ -109,7 +109,7 @@ export function CategoryForm({
           label={t('paidUpCapital')}
           htmlFor="paidUpCapital"
           required
-          error={useFieldError('paidUpCapital')}
+          errorFor="paidUpCapital"
         >
           <Input
             name="paidUpCapital"
@@ -130,7 +130,7 @@ export function CategoryForm({
         <ChoiceGroup
           legend={t('categoryHeading')}
           description={capital === null ? t('categoryEnterCapitalFirst') : undefined}
-          error={useFieldError('requestedCategory')}
+          errorFor="requestedCategory"
         >
           {bands.map((band) => {
             const affordable = capital !== null && capital >= band.minimumPaidUpCapital

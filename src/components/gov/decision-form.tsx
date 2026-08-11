@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { useTranslations } from 'next-intl'
 import { decideAction } from '@/app/[locale]/applications/actions'
-import { ActionForm, useFieldError } from '@/components/forms/action-form'
+import { ActionForm } from '@/components/forms/action-form'
 import { Field, Textarea } from '@/components/ui/form'
 import { Panel } from '@/components/ui/panel'
 import { ChoiceGroup, ChoiceOption } from '@/components/application/choice'
@@ -31,7 +31,7 @@ export function DecisionForm({ applicationId }: { applicationId: string }) {
         submitLabel={decision === 'REJECT' ? t('reject') : t('approve')}
         showAutoSaveNote={false}
       >
-        <ChoiceGroup legend={t('reviewDecision')} error={useFieldError('decision')}>
+        <ChoiceGroup legend={t('reviewDecision')} errorFor="decision">
           <ChoiceOption
             name="decision"
             value="APPROVE"
@@ -53,7 +53,7 @@ export function DecisionForm({ applicationId }: { applicationId: string }) {
           htmlFor="note"
           hint={decision === 'REJECT' ? t('rejectReasonHint') : undefined}
           required={decision === 'REJECT'}
-          error={useFieldError('note')}
+          errorFor="note"
         >
           <Textarea name="note" rows={4} />
         </Field>

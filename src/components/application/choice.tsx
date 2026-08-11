@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { cn } from '@/lib/cn'
 import { Check, Icon } from '@/components/ui/icon'
+import { useFieldError } from '@/components/forms/form-state'
 
 /**
  * A choice a broker makes with a thumb.
@@ -26,15 +27,25 @@ export function ChoiceGroup({
   legend,
   description,
   children,
-  error,
+  error: given,
+  errorFor,
   className,
 }: {
   legend: string
   description?: string
   children: React.ReactNode
+  /** An already-resolved message. `errorFor` is the safer way in. */
   error?: string
+  /**
+   * The field name to look up in the enclosing form's error map. Resolved here,
+   * inside `<ActionForm>`'s provider — see src/components/forms/form-state.tsx.
+   */
+  errorFor?: string
   className?: string
 }) {
+  const fromForm = useFieldError(errorFor)
+  const error = given ?? fromForm
+
   return (
     <fieldset className={cn('min-w-0 border-0 p-0', className)}>
       <legend className="mb-1 text-md font-semibold text-navy-700">{legend}</legend>

@@ -15,7 +15,7 @@ import { EmptyState, KeyValue, KeyValueItem, Panel } from '@/components/ui/panel
 import { FileSearch } from '@/components/ui/icon'
 import { Ltr, Money, Stamp } from '@/components/ui/bidi'
 import { ChoiceGroup, ChoiceOption } from './choice'
-import { ActionForm, useFieldError } from '@/components/forms/action-form'
+import { ActionForm } from '@/components/forms/action-form'
 import { WhyWeAsk } from './why-we-ask'
 
 /**
@@ -106,6 +106,14 @@ export function ContractsStep({
             applicationId={applicationId}
             contract={editing}
             types={types}
+            // A saved contract must stop looking like an unsaved one. The action
+            // returns this same address, so `ActionForm` re-reads the page
+            // rather than pushing to where we already are; closing the editor
+            // here is what turns the form into the card the re-read produced.
+            onSaved={() => {
+              setEditing(null)
+              setAdding(false)
+            }}
             onCancel={
               contracts.length > 0
                 ? () => {
@@ -229,11 +237,13 @@ function ContractForm({
   contract,
   types,
   onCancel,
+  onSaved,
 }: {
   applicationId: string
   contract: ContractRow | null
   types: ContractTypeOption[]
   onCancel?: () => void
+  onSaved?: () => void
 }) {
   const t = useTranslations('apply')
   const tCommon = useTranslations('common')
@@ -244,6 +254,7 @@ function ContractForm({
       action={saveContractAction}
       applicationId={applicationId}
       submitLabel={tCommon('save')}
+      onSuccess={onSaved}
       secondary={
         onCancel ? (
           <Button type="button" size="touch" variant="ghost" onClick={onCancel}>
@@ -255,10 +266,10 @@ function ContractForm({
       {contract ? <input type="hidden" name="contractId" value={contract.id} /> : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t('clientNameAr')} htmlFor="clientNameAr" required error={useFieldError('clientNameAr')}>
+        <Field label={t('clientNameAr')} htmlFor="clientNameAr" required errorFor="clientNameAr">
           <Input name="clientNameAr" defaultValue={contract?.clientNameAr ?? ''} lang="ar" dir="rtl" />
         </Field>
-        <Field label={t('clientNameEn')} htmlFor="clientNameEn" required error={useFieldError('clientNameEn')}>
+        <Field label={t('clientNameEn')} htmlFor="clientNameEn" required errorFor="clientNameEn">
           <Input name="clientNameEn" defaultValue={contract?.clientNameEn ?? ''} lang="en" dir="ltr" />
         </Field>
       </div>
@@ -268,7 +279,7 @@ function ContractForm({
         label={t('clientNationality')}
         htmlFor="clientNationality"
         required
-        error={useFieldError('clientNationality')}
+        errorFor="clientNationality"
       >
         <Input name="clientNationality" defaultValue={contract?.clientNationality ?? ''} />
       </Field>
@@ -278,7 +289,7 @@ function ContractForm({
           label={t('authenticationBody')}
           htmlFor="authenticationBody"
           required
-          error={useFieldError('authenticationBody')}
+          errorFor="authenticationBody"
         >
           <Select name="authenticationBody" defaultValue={contract?.authenticationBody ?? ''}>
             <option value="" disabled>
@@ -294,8 +305,12 @@ function ContractForm({
         <Field
           label={t('authenticationNumber')}
           htmlFor="authenticationNumber"
+          // The schema behind this field accepts digits and separators only.
+          // Saying so before the applicant types is the difference between a
+          // form that works and one that refuses a reasonable-looking answer.
+          hint={t('digitsOnlyHint')}
           required
-          error={useFieldError('authenticationNumber')}
+          errorFor="authenticationNumber"
         >
           <Input
             name="authenticationNumber"
@@ -308,15 +323,15 @@ function ContractForm({
       <WhyWeAsk label={t('whyWeAsk')}>{t('whyAuthentication')}</WhyWeAsk>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t('contractValidFrom')} htmlFor="validFrom" required error={useFieldError('validFrom')}>
+        <Field label={t('contractValidFrom')} htmlFor="validFrom" required errorFor="validFrom">
           <Input name="validFrom" type="date" defaultValue={contract?.validFrom ?? ''} dir="ltr" />
         </Field>
-        <Field label={t('contractValidTo')} htmlFor="validTo" required error={useFieldError('validTo')}>
+        <Field label={t('contractValidTo')} htmlFor="validTo" required errorFor="validTo">
           <Input name="validTo" type="date" defaultValue={contract?.validTo ?? ''} dir="ltr" />
         </Field>
       </div>
 
-      <ChoiceGroup legend={t('capacityActedIn')} error={useFieldError('capacityActedIn')}>
+      <ChoiceGroup legend={t('capacityActedIn')} errorFor="capacityActedIn">
         {types.map((type) => (
           <ChoiceOption
             key={type.key}
@@ -332,7 +347,7 @@ function ContractForm({
         label={t('contractValue')}
         hint={tCommon('optional')}
         htmlFor="contractValue"
-        error={useFieldError('contractValue')}
+        errorFor="contractValue"
       >
         <Input
           name="contractValue"
@@ -347,7 +362,7 @@ function ContractForm({
         label={t('subjectDescription')}
         htmlFor="subjectDescription"
         required
-        error={useFieldError('subjectDescription')}
+        errorFor="subjectDescription"
       >
         <Textarea name="subjectDescription" rows={3} defaultValue={contract?.subjectDescription ?? ''} />
       </Field>
@@ -356,7 +371,7 @@ function ContractForm({
         label={t('subjectAddress')}
         htmlFor="subjectAddress"
         required
-        error={useFieldError('subjectAddress')}
+        errorFor="subjectAddress"
       >
         <Input name="subjectAddress" defaultValue={contract?.subjectAddress ?? ''} />
       </Field>
@@ -365,7 +380,7 @@ function ContractForm({
         label={t('governorate')}
         hint={tCommon('optional')}
         htmlFor="governorate"
-        error={useFieldError('governorate')}
+        errorFor="governorate"
       >
         <Select name="governorate" defaultValue={contract?.governorate ?? ''}>
           <option value="">—</option>

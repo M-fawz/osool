@@ -9,7 +9,7 @@ import {
   requestCompletionsAction,
   saveExaminationAction,
 } from '@/app/[locale]/applications/actions'
-import { ActionForm, useFieldError } from '@/components/forms/action-form'
+import { ActionForm } from '@/components/forms/action-form'
 import { Button } from '@/components/ui/button'
 import { Field, Input, Select, Textarea } from '@/components/ui/form'
 import { Panel } from '@/components/ui/panel'
@@ -248,7 +248,7 @@ function ReviewForm({
 
         <div className="space-y-4 border-t border-rule p-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={t('originalCount')} htmlFor="originalCount" error={useFieldError('originalCount')}>
+            <Field label={t('originalCount')} htmlFor="originalCount" errorFor="originalCount">
               <Input
                 name="originalCount"
                 inputMode="numeric"
@@ -257,7 +257,7 @@ function ReviewForm({
                 className="tabular"
               />
             </Field>
-            <Field label={t('copyCount')} htmlFor="copyCount" error={useFieldError('copyCount')}>
+            <Field label={t('copyCount')} htmlFor="copyCount" errorFor="copyCount">
               <Input
                 name="copyCount"
                 inputMode="numeric"
@@ -268,7 +268,7 @@ function ReviewForm({
             </Field>
           </div>
 
-          <ChoiceGroup legend={t('brokerageNature')} error={useFieldError('brokerageNature')}>
+          <ChoiceGroup legend={t('brokerageNature')} errorFor="brokerageNature">
             {types.map((type) => (
               <ChoiceOption
                 key={type.key}
@@ -286,7 +286,7 @@ function ReviewForm({
               label={t('proposedValidFrom')}
               htmlFor="proposedValidFrom"
               required
-              error={useFieldError('proposedValidFrom')}
+              errorFor="proposedValidFrom"
             >
               <Input
                 name="proposedValidFrom"
@@ -299,7 +299,7 @@ function ReviewForm({
               label={t('proposedValidTo')}
               htmlFor="proposedValidTo"
               required
-              error={useFieldError('proposedValidTo')}
+              errorFor="proposedValidTo"
             >
               <Input
                 name="proposedValidTo"
@@ -310,7 +310,7 @@ function ReviewForm({
             </Field>
           </div>
 
-          <Field label={t('recommendation')} htmlFor="recommendation" required error={useFieldError('recommendation')}>
+          <Field label={t('recommendation')} htmlFor="recommendation" required errorFor="recommendation">
             <Select name="recommendation" defaultValue={defaults.recommendation ?? ''}>
               <option value="" disabled>
                 —
@@ -320,7 +320,7 @@ function ReviewForm({
             </Select>
           </Field>
 
-          <Field label={t('examinerNote')} htmlFor="examinerNote" error={useFieldError('examinerNote')}>
+          <Field label={t('examinerNote')} htmlFor="examinerNote" errorFor="examinerNote">
             <Textarea name="examinerNote" rows={3} defaultValue={defaults.examinerNote ?? ''} />
           </Field>
         </div>

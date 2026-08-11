@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { cn } from '@/lib/cn'
 import { Icon, AlertTriangle } from './icon'
+import { useFieldError } from '@/components/forms/form-state'
 
 /**
  * Form controls.
@@ -88,11 +89,19 @@ export const Select = React.forwardRef<
  *
  * Pass exactly one form control as the child. It is cloned so that the
  * description wiring cannot be forgotten at the call site.
+ *
+ * `errorFor` is the name of the field in the Server Action's error map. Prefer
+ * it to passing `error` from a `useFieldError` call at the call site: this
+ * component renders *inside* `<ActionForm>`, so the lookup here always finds
+ * the provider, and a call site above the provider silently never can. See
+ * src/components/forms/form-state.tsx — that mistake cost this product every
+ * validation message on eight of its nine forms.
  */
 export function Field({
   label,
   hint,
   error,
+  errorFor,
   required,
   htmlFor,
   children,
@@ -100,21 +109,27 @@ export function Field({
 }: {
   label: string
   hint?: string
+  /** An already-resolved message. `errorFor` is the safer way in. */
   error?: string
+  /** The field name to look up in the enclosing form's error map. */
+  errorFor?: string
   required?: boolean
   htmlFor: string
   children: React.ReactElement
   className?: string
 }) {
+  const fromForm = useFieldError(errorFor)
+  const message = error ?? fromForm
+
   const hintId = hint ? `${htmlFor}-hint` : undefined
-  const errorId = error ? `${htmlFor}-error` : undefined
+  const errorId = message ? `${htmlFor}-error` : undefined
   const describedBy = [errorId, hintId].filter(Boolean).join(' ') || undefined
 
   const control = React.isValidElement(children)
     ? React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
         id: htmlFor,
         'aria-describedby': describedBy,
-        'aria-invalid': error ? true : undefined,
+        'aria-invalid': message ? true : undefined,
         'aria-required': required || undefined,
       })
     : children
@@ -142,10 +157,14 @@ export function Field({
         </p>
       ) : null}
 
-      {error ? (
-        <p id={errorId} className="flex items-start gap-1.5 text-xs text-blocking">
+      {message ? (
+        <p
+          id={errorId}
+          role="alert"
+          className="flex items-start gap-1.5 text-xs text-blocking"
+        >
           <Icon as={AlertTriangle} size="xs" className="mt-px" />
-          <span>{error}</span>
+          <span>{message}</span>
         </p>
       ) : null}
     </div>

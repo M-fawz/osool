@@ -7,7 +7,7 @@ import { establishmentTypeLabels } from '@/lib/reference/capacities'
 import { GOVERNORATE_ORDER, governorateLabels } from '@/lib/reference/governorates'
 import { Field, Input, Select } from '@/components/ui/form'
 import { ChoiceGroup, ChoiceOption } from './choice'
-import { ActionForm, useFieldError } from '@/components/forms/action-form'
+import { ActionForm } from '@/components/forms/action-form'
 import { WhyWeAsk } from './why-we-ask'
 
 /**
@@ -59,7 +59,7 @@ export function EntityForm({
     >
       <ChoiceGroup
         legend={t('establishmentType')}
-        error={useFieldError('establishmentType')}
+        errorFor="establishmentType"
       >
         {(['NATURAL_PERSON', 'LEGAL_PERSON'] as const).map((type) => (
           <ChoiceOption
@@ -76,7 +76,7 @@ export function EntityForm({
       <section className="space-y-4">
         <h2 className="text-md font-semibold text-navy-700">{t('entityNamesHeading')}</h2>
 
-        <Field label={t('tradeNameAr')} htmlFor="tradeNameAr" required error={useFieldError('tradeNameAr')}>
+        <Field label={t('tradeNameAr')} htmlFor="tradeNameAr" required errorFor="tradeNameAr">
           <Input name="tradeNameAr" defaultValue={defaults.tradeNameAr ?? ''} lang="ar" dir="rtl" />
         </Field>
         <WhyWeAsk label={t('whyWeAsk')}>{t('whyTradeName')}</WhyWeAsk>
@@ -85,7 +85,7 @@ export function EntityForm({
           label={t('tradeNameEn')}
           hint={tCommon('optional')}
           htmlFor="tradeNameEn"
-          error={useFieldError('tradeNameEn')}
+          errorFor="tradeNameEn"
         >
           <Input name="tradeNameEn" defaultValue={defaults.tradeNameEn ?? ''} lang="en" dir="ltr" />
         </Field>
@@ -95,7 +95,7 @@ export function EntityForm({
             label={t('tradeStyleAr')}
             hint={tCommon('optional')}
             htmlFor="tradeStyleAr"
-            error={useFieldError('tradeStyleAr')}
+            errorFor="tradeStyleAr"
           >
             <Input name="tradeStyleAr" defaultValue={defaults.tradeStyleAr ?? ''} lang="ar" dir="rtl" />
           </Field>
@@ -103,7 +103,7 @@ export function EntityForm({
             label={t('tradeStyleEn')}
             hint={tCommon('optional')}
             htmlFor="tradeStyleEn"
-            error={useFieldError('tradeStyleEn')}
+            errorFor="tradeStyleEn"
           >
             <Input name="tradeStyleEn" defaultValue={defaults.tradeStyleEn ?? ''} lang="en" dir="ltr" />
           </Field>
@@ -114,7 +114,7 @@ export function EntityForm({
           label={t('legalForm')}
           hint={tCommon('optional')}
           htmlFor="legalForm"
-          error={useFieldError('legalForm')}
+          errorFor="legalForm"
         >
           <Input name="legalForm" defaultValue={defaults.legalForm ?? ''} />
         </Field>
@@ -127,12 +127,12 @@ export function EntityForm({
           label={t('headOfficeAddress')}
           htmlFor="headOfficeAddress"
           required
-          error={useFieldError('headOfficeAddress')}
+          errorFor="headOfficeAddress"
         >
           <Input name="headOfficeAddress" defaultValue={defaults.headOfficeAddress ?? ''} autoComplete="street-address" />
         </Field>
 
-        <Field label={t('governorate')} htmlFor="governorate" required error={useFieldError('governorate')}>
+        <Field label={t('governorate')} htmlFor="governorate" required errorFor="governorate">
           <Select name="governorate" defaultValue={defaults.governorate ?? ''}>
             <option value="" disabled>
               —
@@ -146,14 +146,14 @@ export function EntityForm({
         </Field>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('telephone')} htmlFor="telephone" required error={useFieldError('telephone')}>
+          <Field label={t('telephone')} htmlFor="telephone" required errorFor="telephone">
             <Input name="telephone" type="tel" inputMode="tel" defaultValue={defaults.telephone ?? ''} dir="ltr" autoComplete="tel" />
           </Field>
           <Field
             label={t('poBox')}
             hint={tCommon('optional')}
             htmlFor="poBox"
-            error={useFieldError('poBox')}
+            errorFor="poBox"
           >
             <Input name="poBox" defaultValue={defaults.poBox ?? ''} dir="ltr" />
           </Field>
@@ -163,7 +163,7 @@ export function EntityForm({
           label={t('email')}
           hint={tCommon('optional')}
           htmlFor="email"
-          error={useFieldError('email')}
+          errorFor="email"
         >
           <Input name="email" type="email" defaultValue={defaults.email ?? ''} dir="ltr" autoComplete="email" />
         </Field>
@@ -176,8 +176,9 @@ export function EntityForm({
           <Field
             label={t('commercialRegisterNo')}
             htmlFor="commercialRegisterNo"
+            hint={t('digitsOnlyHint')}
             required
-            error={useFieldError('commercialRegisterNo')}
+            errorFor="commercialRegisterNo"
           >
             <Input
               name="commercialRegisterNo"
@@ -191,7 +192,7 @@ export function EntityForm({
             label={t('commercialRegisterOffice')}
             htmlFor="commercialRegisterOffice"
             required
-            error={useFieldError('commercialRegisterOffice')}
+            errorFor="commercialRegisterOffice"
           >
             <Input name="commercialRegisterOffice" defaultValue={defaults.commercialRegisterOffice ?? ''} />
           </Field>
@@ -202,7 +203,7 @@ export function EntityForm({
             label={t('commercialRegisterDate')}
             htmlFor="commercialRegisterDate"
             required
-            error={useFieldError('commercialRegisterDate')}
+            errorFor="commercialRegisterDate"
           >
             <Input
               name="commercialRegisterDate"
@@ -215,7 +216,7 @@ export function EntityForm({
             label={t('commercialRegisterRenewalDate')}
             hint={tCommon('optional')}
             htmlFor="commercialRegisterRenewalDate"
-            error={useFieldError('commercialRegisterRenewalDate')}
+            errorFor="commercialRegisterRenewalDate"
           >
             <Input
               name="commercialRegisterRenewalDate"
@@ -231,8 +232,9 @@ export function EntityForm({
           <Field
             label={t('taxRegistrationNo')}
             htmlFor="taxRegistrationNo"
+            hint={t('digitsOnlyHint')}
             required
-            error={useFieldError('taxRegistrationNo')}
+            errorFor="taxRegistrationNo"
           >
             <Input
               name="taxRegistrationNo"
@@ -242,7 +244,7 @@ export function EntityForm({
               className="font-mono"
             />
           </Field>
-          <Field label={t('taxOffice')} htmlFor="taxOffice" required error={useFieldError('taxOffice')}>
+          <Field label={t('taxOffice')} htmlFor="taxOffice" required errorFor="taxOffice">
             <Input name="taxOffice" defaultValue={defaults.taxOffice ?? ''} />
           </Field>
         </div>

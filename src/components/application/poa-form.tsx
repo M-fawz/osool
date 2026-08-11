@@ -46,7 +46,7 @@ export function PowerOfAttorneyForm({
     >
       <ChoiceGroup
         legend={t('poaType')}
-        error={useFieldError('poaType')}
+        errorFor="poaType"
       >
         {(['GENERAL', 'SPECIAL'] as const).map((type) => (
           <ChoiceOption
@@ -61,11 +61,17 @@ export function PowerOfAttorneyForm({
       </ChoiceGroup>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t('poaNumber')} htmlFor="number" required error={useFieldError('number')}>
+        <Field
+          label={t('poaNumber')}
+          htmlFor="number"
+          hint={t('digitsOnlyHint')}
+          required
+          errorFor="number"
+        >
           <Input name="number" defaultValue={defaults.number ?? ''} inputMode="numeric" dir="ltr" className="font-mono" />
         </Field>
 
-        <Field label={t('poaYear')} htmlFor="year" required error={useFieldError('year')}>
+        <Field label={t('poaYear')} htmlFor="year" required errorFor="year">
           <Input
             name="year"
             defaultValue={defaults.year ?? ''}
@@ -81,12 +87,12 @@ export function PowerOfAttorneyForm({
         label={t('poaOffice')}
         htmlFor="notarisationOffice"
         required
-        error={useFieldError('notarisationOffice')}
+        errorFor="notarisationOffice"
       >
         <Input name="notarisationOffice" defaultValue={defaults.notarisationOffice ?? ''} />
       </Field>
 
-      <Field label={t('poaNotarisedOn')} htmlFor="notarisedOn" error={useFieldError('notarisedOn')}>
+      <Field label={t('poaNotarisedOn')} htmlFor="notarisedOn" errorFor="notarisedOn">
         <Input name="notarisedOn" type="date" defaultValue={defaults.notarisedOn ?? ''} dir="ltr" />
       </Field>
 

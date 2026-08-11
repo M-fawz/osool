@@ -9,7 +9,7 @@ import {
   recordFeesAction,
   recordIntakeAction,
 } from '@/app/[locale]/applications/actions'
-import { ActionForm, useFieldError } from '@/components/forms/action-form'
+import { ActionForm } from '@/components/forms/action-form'
 import { Field, Input, Select } from '@/components/ui/form'
 import { Panel } from '@/components/ui/panel'
 import { Notice } from '@/components/ui/notice'
@@ -52,23 +52,16 @@ export function FeesForm({
   const [amounts, setAmounts] = React.useState<Record<string, string>>({})
 
   /*
-   * Read every field's error here, not inside the JSX.
-   *
-   * The three bank fields below are rendered only when the payment method is
-   * not cash. Called from inside that branch, `useFieldError` runs on some
-   * renders and not others, and React counts hooks by position: the treasurer
-   * changing the payment method from cash to cheque would crash the screen with
-   * "rendered more hooks than during the previous render". Hoisting the calls
-   * makes the count constant, which is the whole of the rule.
+   * The errors used to be read here, hoisted out of the JSX so that the three
+   * bank fields — rendered only when the method is not cash — could not change
+   * the hook count between renders. That solved the hook-order problem and
+   * created a worse one: this component sits *above* `ActionForm`'s provider,
+   * so all five lookups read the default context and no fee-form error has ever
+   * been shown. `errorFor` moves each lookup into the control that draws it,
+   * where the provider is above it — and where the hook-order concern does not
+   * arise either, because a conditionally *rendered component* counts its own
+   * hooks. See src/components/forms/form-state.tsx.
    */
-  const errors = {
-    paymentMethod: useFieldError('paymentMethod'),
-    receiptNumber: useFieldError('receiptNumber'),
-    bankName: useFieldError('bankName'),
-    bankBranch: useFieldError('bankBranch'),
-    chequeNumber: useFieldError('chequeNumber'),
-  }
-
   const lines = headings
     .map((heading) => ({ feeKey: heading.key, amount: amounts[heading.key] ?? '' }))
     .filter((line) => line.amount.trim() !== '')
@@ -89,7 +82,7 @@ export function FeesForm({
       >
         <input type="hidden" name="lines" value={JSON.stringify(lines)} />
 
-        <ChoiceGroup legend={t('paymentMethod')} error={errors.paymentMethod}>
+        <ChoiceGroup legend={t('paymentMethod')} errorFor="paymentMethod">
           {(Object.keys(paymentMethodLabels) as PaymentMethod[]).map((value) => (
             <ChoiceOption
               key={value}
@@ -102,19 +95,19 @@ export function FeesForm({
           ))}
         </ChoiceGroup>
 
-        <Field label={t('receiptNumber')} htmlFor="receiptNumber" required error={errors.receiptNumber}>
+        <Field label={t('receiptNumber')} htmlFor="receiptNumber" required errorFor="receiptNumber">
           <Input name="receiptNumber" dir="ltr" className="font-mono" />
         </Field>
 
         {method !== 'CASH' ? (
           <div className="grid gap-4 sm:grid-cols-3">
-            <Field label={t('bankName')} htmlFor="bankName" required error={errors.bankName}>
+            <Field label={t('bankName')} htmlFor="bankName" required errorFor="bankName">
               <Input name="bankName" />
             </Field>
-            <Field label={t('bankBranch')} htmlFor="bankBranch" required error={errors.bankBranch}>
+            <Field label={t('bankBranch')} htmlFor="bankBranch" required errorFor="bankBranch">
               <Input name="bankBranch" />
             </Field>
-            <Field label={t('chequeNumber')} htmlFor="chequeNumber" error={errors.chequeNumber}>
+            <Field label={t('chequeNumber')} htmlFor="chequeNumber" errorFor="chequeNumber">
               <Input name="chequeNumber" dir="ltr" className="font-mono" />
             </Field>
           </div>
@@ -197,12 +190,12 @@ export function DeliveryForm({ applicationId }: { applicationId: string }) {
           label={t('deliveredToName')}
           htmlFor="deliveredToName"
           required
-          error={useFieldError('deliveredToName')}
+          errorFor="deliveredToName"
         >
           <Input name="deliveredToName" />
         </Field>
 
-        <ChoiceGroup legend={t('deliveryTitle')} error={useFieldError('renewalDateAcknowledged')}>
+        <ChoiceGroup legend={t('deliveryTitle')} errorFor="renewalDateAcknowledged">
           <ChoiceOption
             type="checkbox"
             name="renewalDateAcknowledged"
@@ -233,7 +226,7 @@ export function IntakeForm({ applicationId }: { applicationId: string }) {
         submitLabel={t('intakeRecord')}
         showAutoSaveNote={false}
       >
-        <Field label={t('intakePageCount')} htmlFor="pageCount" required error={useFieldError('pageCount')}>
+        <Field label={t('intakePageCount')} htmlFor="pageCount" required errorFor="pageCount">
           <Input name="pageCount" inputMode="numeric" dir="ltr" className="tabular" />
         </Field>
       </ActionForm>
@@ -259,7 +252,7 @@ export function AssignExaminerForm({
         submitLabel={t('intakeAssign')}
         showAutoSaveNote={false}
       >
-        <Field label={t('intakeAssignee')} htmlFor="examinerId" required error={useFieldError('examinerId')}>
+        <Field label={t('intakeAssignee')} htmlFor="examinerId" required errorFor="examinerId">
           <Select name="examinerId" defaultValue="">
             <option value="" disabled>
               —

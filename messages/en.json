@@ -10,6 +10,13 @@
   "nav": {
     "signIn": "Sign in",
     "signOut": "Sign out",
+    "account": "Account",
+    "signedInAs": "Signed in as",
+    "accountRole": "Role",
+    "accountEmail": "Email address",
+    "accountOrganisation": "Organisation",
+    "accountFirm": "Firm",
+    "accountAuthority": "General Organization for Export & Import Control",
     "language": "Language",
     "switchToEnglish": "العربية",
     "dashboard": "Dashboard",
@@ -238,7 +245,8 @@
     "unexpectedTitle": "What you entered could not be saved.",
     "unexpectedWhy": "An unexpected fault occurred while saving, and nothing was recorded.",
     "unexpectedNext": "Try again. Everything you entered earlier is still saved.",
-    "unexpectedWho": "If it keeps happening, contact Authority technical support."
+    "unexpectedWho": "If it keeps happening, contact Authority technical support.",
+    "summaryTitle": "{count, plural, one {One item needs correcting before this can be saved.} other {# items need correcting before this can be saved.}}"
   },
   "portal": {
     "title": "My applications",
@@ -295,6 +303,9 @@
     "saveAndExit": "Save and exit",
     "back": "Back",
     "autoSaved": "Everything you enter is saved at each step, and you can come back at any time.",
+    "openingApplication": "Opening your application…",
+    "digitsOnlyHint": "Digits and separators only — e.g. 12345 or 2026/1234. Letters are not accepted.",
+    "saving": "Saving…",
     "whyWeAsk": "Why is this asked for?",
     "incomplete": "Incomplete",
     "complete": "Complete",

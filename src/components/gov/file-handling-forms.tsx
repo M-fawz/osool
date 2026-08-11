@@ -5,7 +5,7 @@ import {
   recordArchiveAction,
   recordDataExtractionAction,
 } from '@/app/[locale]/applications/actions'
-import { ActionForm, useFieldError } from '@/components/forms/action-form'
+import { ActionForm } from '@/components/forms/action-form'
 import { Field, Input, Textarea } from '@/components/ui/form'
 import { Panel } from '@/components/ui/panel'
 
@@ -31,7 +31,7 @@ export function DataExtractionForm({ applicationId }: { applicationId: string })
         submitLabel={t('recordDataExtraction')}
         showAutoSaveNote={false}
       >
-        <Field label={t('dataNote')} htmlFor="dataNote" error={useFieldError('dataNote')}>
+        <Field label={t('dataNote')} htmlFor="dataNote" errorFor="dataNote">
           <Textarea name="dataNote" rows={3} />
         </Field>
       </ActionForm>
@@ -70,7 +70,7 @@ export function ArchiveForm({
               : t('intakeRecordedPages', { intake: intakePageCount })
           }
           required
-          error={useFieldError('pageCount')}
+          errorFor="pageCount"
         >
           <Input name="pageCount" inputMode="numeric" dir="ltr" className="tabular" />
         </Field>
@@ -80,7 +80,7 @@ export function ArchiveForm({
             label={t('serialRegisterNo')}
             htmlFor="serialRegisterNo"
             required
-            error={useFieldError('serialRegisterNo')}
+            errorFor="serialRegisterNo"
           >
             <Input name="serialRegisterNo" dir="ltr" className="font-mono" />
           </Field>
@@ -88,7 +88,7 @@ export function ArchiveForm({
             label={t('alphabeticalIndex')}
             htmlFor="alphabeticalIndex"
             required
-            error={useFieldError('alphabeticalIndex')}
+            errorFor="alphabeticalIndex"
           >
             <Input name="alphabeticalIndex" />
           </Field>
@@ -98,7 +98,7 @@ export function ArchiveForm({
           label={t('fileReference')}
           hint={tCommon('optional')}
           htmlFor="fileReference"
-          error={useFieldError('fileReference')}
+          errorFor="fileReference"
         >
           <Input name="fileReference" dir="ltr" className="font-mono" />
         </Field>
