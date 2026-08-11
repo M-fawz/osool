@@ -34,20 +34,38 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['playwright', 'playwright-core', '@sparticuz/chromium'],
 
   /**
-   * …and the browser itself has to be carried with the function that launches it.
+   * …and the browser itself has to be carried with the function that launches
+   * it, along with the fonts it has to shape Arabic with.
    *
-   * Dependency tracing follows `import`s, and `@sparticuz/chromium` does not
-   * import its Chromium: the browser is a 64 MB brotli archive in the package's
-   * `bin/` directory that the library reads at runtime and unpacks into `/tmp`.
-   * The tracer cannot see a file that nothing imports, so without this the
-   * deployment contains the launcher and not the browser, and the failure waits
-   * until the first registration card — the one flow nobody exercises in a smoke
-   * test — and reads "The input file is not accessible".
+   * Dependency tracing follows `import`s, and neither of these is imported.
    *
-   * Only the route that issues cards. Every other function stays small.
+   *   · `@sparticuz/chromium` does not import its Chromium: the browser is a
+   *     64 MB brotli archive in the package's `bin/` directory that the library
+   *     reads at runtime and unpacks into `/tmp`.
+   *   · The typefaces are read off disk by `fontCss()` in src/lib/pdf/render.ts
+   *     and inlined as data URIs, so the tracer sees a `readFile` of a path it
+   *     has no reason to believe is a dependency.
+   *
+   * The tracer cannot see a file that nothing imports, so without both entries
+   * the deployment contains the launcher and not the browser, or the browser
+   * and not the fonts — and either way the failure waits until the first
+   * registration card, the one flow a smoke test does not reach. The font case
+   * fails as `ENOENT … public/fonts/plex-arabic-400-arabic.woff2` at the moment
+   * an issuer clicks Issue, which is both the worst moment to discover it and
+   * the least obvious message to discover it from.
+   *
+   * Both routes, because `src/components/gov/issuance-forms.tsx` registers
+   * `issueCardAction` on each of them. Every other function stays small.
    */
   outputFileTracingIncludes: {
-    '/[locale]/issuance/[id]': ['./node_modules/@sparticuz/chromium/bin/**'],
+    '/[locale]/issuance/[id]': [
+      './node_modules/@sparticuz/chromium/bin/**',
+      './public/fonts/**',
+    ],
+    '/[locale]/applications/[id]': [
+      './node_modules/@sparticuz/chromium/bin/**',
+      './public/fonts/**',
+    ],
   },
 
   eslint: {

@@ -132,7 +132,30 @@ async function fontCss(): Promise<string> {
 
   const faces = await Promise.all(
     fonts.map(async (f) => {
-      const bytes = await readFile(join(process.cwd(), 'public', 'fonts', f.file))
+      const path = join(process.cwd(), 'public', 'fonts', f.file)
+      let bytes: Buffer
+      try {
+        bytes = await readFile(path)
+      } catch (cause) {
+        /*
+         * Nothing imports these files — `fontCss` reads them off disk — so a
+         * bundler's dependency tracer has no reason to carry them into a
+         * serverless function, and the bare ENOENT that results names a path
+         * inside /var/task that means nothing to whoever reads it. It surfaces
+         * at the moment an issuer clicks Issue on a real registration card,
+         * which is the worst possible moment for an unexplained error.
+         *
+         * See `outputFileTracingIncludes` in next.config.ts.
+         */
+        throw new Error(
+          `The Arabic typefaces are missing from this deployment (${f.file}). Registration ` +
+            'cards cannot be rendered without them: Arabic needs the font to select letter ' +
+            'forms, and a fallback face produces empty boxes rather than a readable name. ' +
+            'Add ./public/fonts/** to outputFileTracingIncludes for this route in ' +
+            'next.config.ts and redeploy.',
+          { cause },
+        )
+      }
       return `@font-face{font-family:'${f.family}';font-weight:${f.weight};font-style:normal;font-display:block;src:url(data:font/woff2;base64,${bytes.toString('base64')}) format('woff2');}`
     }),
   )
