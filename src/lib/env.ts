@@ -108,7 +108,21 @@ const schema = z.object({
    */
   EXTRA_TRUSTED_ORIGINS: z.string().default(''),
 
-  EMAIL_PROVIDER: z.enum(['console', 'resend']).default('console'),
+  /**
+   * How a one-time link — activation, verification, password reset — reaches
+   * the person it belongs to.
+   *
+   *   · `resend` — a real transactional provider. What a live register should
+   *     run, and the only driver that reaches an inbox the Authority does not
+   *     control.
+   *   · `manual` — the deployment has no outbound mail. The link is handed to
+   *     the SYSTEM_ADMIN who caused it to be issued, once, on screen, and they
+   *     hand it over out of band. Not a queue and not a table: nothing is
+   *     stored, and the link is shown to exactly one person at exactly the
+   *     moment they performed the action that created it.
+   *   · `console` — one developer, one machine. Refused in production below.
+   */
+  EMAIL_PROVIDER: z.enum(['console', 'resend', 'manual']).default('console'),
   RESEND_API_KEY: z.string().optional().default(''),
   EMAIL_FROM: z.string().min(3).default('Osool <no-reply@osool.gov.eg>'),
 
@@ -220,7 +234,9 @@ if (isProduction) {
   const productionFaults: string[] = []
   if (env.EMAIL_PROVIDER === 'console') {
     productionFaults.push(
-      'EMAIL_PROVIDER=console in production: activation emails would never reach anyone.',
+      'EMAIL_PROVIDER=console in production: activation emails would never reach anyone. ' +
+        'Use resend (a real provider), or manual if this deployment genuinely has no outbound ' +
+        'mail and the administrator hands activation links over out of band.',
     )
   }
   if (env.EMAIL_PROVIDER === 'resend' && !env.RESEND_API_KEY) {

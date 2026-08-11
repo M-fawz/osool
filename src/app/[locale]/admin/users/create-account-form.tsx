@@ -28,15 +28,24 @@ export function CreateAccountForm({
 }) {
   const [pending, startTransition] = useTransition()
   const [created, setCreated] = useState<string | null>(null)
+  const [link, setLink] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   const [failure, setFailure] = useState<{ message: string } | null>(null)
 
   function onSubmit(formData: FormData) {
     setFailure(null)
     setCreated(null)
+    setLink(null)
+    setCopied(false)
     startTransition(async () => {
       const result = await createGovernmentAccountAction(formData)
-      if (result.ok) setCreated(result.email)
-      else setFailure({ message: result.message })
+      if (result.ok) {
+        setCreated(result.email)
+        // Non-null only where this deployment has no outbound mail, in which
+        // case the administrator is the delivery mechanism and this is the
+        // only time the link will ever be visible.
+        setLink(result.activationUrl ?? null)
+      } else setFailure({ message: result.message })
     })
   }
 
@@ -52,6 +61,34 @@ export function CreateAccountForm({
             {leadAfter}
           </p>
           <p className="mt-1">{labels.createdNext!}</p>
+        </Notice>
+      ) : null}
+
+      {link ? (
+        <Notice tone="caution" title={labels.linkTitle!} live>
+          <p>{labels.linkLead!}</p>
+          {/* Rendered as selectable text as well as behind the copy button: a
+              browser that denies clipboard access must not make the link
+              unreachable, because no second copy exists anywhere. */}
+          <p className="ltr-run mt-2 break-all border border-rule bg-paper p-2 font-mono text-xs text-ink">
+            {link}
+          </p>
+          <p className="mt-2 flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                void navigator.clipboard?.writeText(link).then(
+                  () => setCopied(true),
+                  () => setCopied(false),
+                )
+              }}
+            >
+              {copied ? labels.linkCopied! : labels.linkCopy!}
+            </Button>
+            <span className="text-xs text-ink-muted">{labels.linkOnce!}</span>
+          </p>
         </Notice>
       ) : null}
 

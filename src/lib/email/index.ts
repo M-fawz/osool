@@ -7,12 +7,19 @@ import { env } from '@/lib/env'
  * email — the predecessor system wrote emails to a database table and required
  * an administrator to copy links by hand. That is not acceptable here."
  *
- * So there is no outbox table in this module, and there will not be one. Two
+ * So there is no outbox table in this module, and there will not be one. Three
  * drivers exist:
  *
- *   · `resend`  — a real transactional provider. Required in production;
- *                 src/lib/env.ts refuses to start a production process
- *                 configured any other way.
+ *   · `resend`  — a real transactional provider. What a live register should
+ *                 run on.
+ *   · `manual`  — the deployment has no outbound mail at all. The message is
+ *                 not queued, not stored, and not retried; the one-time link
+ *                 inside it is handed straight back to the administrator whose
+ *                 action produced it, on screen, once. See
+ *                 src/lib/auth/link-capture.ts. This is a *narrower* thing
+ *                 than the predecessor's outbox, not a reinvention of it:
+ *                 nothing is written down, and nobody but the acting
+ *                 administrator ever sees it.
  *   · `console` — development only. Writes the whole message, including the
  *                 activation URL, to the server console where the developer is
  *                 already looking. It is a *delivery* mechanism for one
@@ -30,7 +37,7 @@ export interface EmailMessage {
 }
 
 export interface EmailResult {
-  driver: 'console' | 'resend'
+  driver: 'console' | 'resend' | 'manual'
   id: string | null
   to: string
 }
@@ -68,7 +75,21 @@ async function sendViaResend(message: EmailMessage): Promise<EmailResult> {
   return { driver: 'resend', id: data?.id ?? null, to: message.to }
 }
 
+/**
+ * No outbound mail on this deployment.
+ *
+ * Deliberately does nothing with the message body. The one-time link the
+ * message would have carried has already been captured by
+ * src/lib/auth/link-capture.ts and is returned to the acting administrator by
+ * the provisioning call; writing the body anywhere else would be building the
+ * outbox this module exists not to have.
+ */
+async function sendViaManual(message: EmailMessage): Promise<EmailResult> {
+  return { driver: 'manual', id: null, to: message.to }
+}
+
 export async function sendEmail(message: EmailMessage): Promise<EmailResult> {
   if (env.EMAIL_PROVIDER === 'resend') return sendViaResend(message)
+  if (env.EMAIL_PROVIDER === 'manual') return sendViaManual(message)
   return sendViaConsole(message)
 }

@@ -4,7 +4,15 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { GOVERNMENT_ROLES } from '@/lib/auth/roles'
 import { requireRole } from '@/lib/auth/session'
-import { ProvisioningError, provisionGovernmentAccount, reactivateAccount, suspendAccount } from '@/lib/auth/provisioning'
+import {
+  ProvisioningError,
+  changeAccountRole,
+  provisionGovernmentAccount,
+  reactivateAccount,
+  reissueActivationLink,
+  suspendAccount,
+} from '@/lib/auth/provisioning'
+import type { Role } from '@prisma/client'
 
 /**
  * Account provisioning, as Server Actions.
@@ -24,7 +32,7 @@ const ProvisionSchema = z.object({
 })
 
 export type ActionResult =
-  | { ok: true; email: string }
+  | { ok: true; email: string; activationUrl?: string | null }
   | { ok: false; code: string; message: string; field?: string }
 
 export async function createGovernmentAccountAction(formData: FormData): Promise<ActionResult> {
@@ -65,11 +73,75 @@ export async function createGovernmentAccountAction(formData: FormData): Promise
     )
 
     revalidatePath('/admin/users')
-    return { ok: true, email: result.email }
+    return { ok: true, email: result.email, activationUrl: result.activationUrl }
   } catch (error) {
     if (error instanceof ProvisioningError) {
       return { ok: false, code: error.code, message: error.message }
     }
+    throw error
+  }
+}
+
+/**
+ * Issue a fresh activation link for an account that already exists.
+ *
+ * The remedy for an expired link, and — because minting a new token
+ * invalidates the old one — for a link that went astray.
+ */
+export async function reissueActivationLinkAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireRole(['SYSTEM_ADMIN'])
+  const userId = String(formData.get('userId') ?? '')
+
+  try {
+    const result = await reissueActivationLink({ userId }, {
+      userId: session.userId, role: session.role, name: session.name,
+      ipAddress: session.ipAddress, userAgent: session.userAgent,
+    })
+    revalidatePath('/admin/users')
+    return { ok: true, email: result.email, activationUrl: result.activationUrl }
+  } catch (error) {
+    if (error instanceof ProvisioningError) return { ok: false, code: error.code, message: error.message }
+    throw error
+  }
+}
+
+const RoleChangeSchema = z.object({
+  userId: z.string().min(1),
+  role: z.enum(GOVERNMENT_ROLES as [string, ...string[]]),
+  reason: z.string().trim().min(8, 'A role change must state a reason of at least eight characters.'),
+})
+
+export async function changeAccountRoleAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireRole(['SYSTEM_ADMIN'])
+
+  const parsed = RoleChangeSchema.safeParse({
+    userId: formData.get('userId'),
+    role: formData.get('role'),
+    reason: formData.get('reason'),
+  })
+
+  if (!parsed.success) {
+    const first = parsed.error.issues[0]
+    return {
+      ok: false,
+      code: 'VALIDATION',
+      message: first?.message ?? 'The details provided are not valid.',
+      field: first?.path.join('.'),
+    }
+  }
+
+  try {
+    await changeAccountRole(
+      { userId: parsed.data.userId, role: parsed.data.role as Role, reason: parsed.data.reason },
+      {
+        userId: session.userId, role: session.role, name: session.name,
+        ipAddress: session.ipAddress, userAgent: session.userAgent,
+      },
+    )
+    revalidatePath('/admin/users')
+    return { ok: true, email: '' }
+  } catch (error) {
+    if (error instanceof ProvisioningError) return { ok: false, code: error.code, message: error.message }
     throw error
   }
 }

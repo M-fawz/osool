@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { recordAuditEvent } from '@/lib/audit'
 import { GOVERNMENT_ROLES, isGovernmentRole, roleLabel } from './roles'
+import { captureIssuedLinks } from './link-capture'
 
 /**
  * Account provisioning. 02-SYSTEM-ARCHITECTURE §4.
@@ -41,8 +42,19 @@ export interface ProvisionResult {
   userId: string
   email: string
   role: Role
-  emailDriver: 'console' | 'resend'
+  emailDriver: 'console' | 'resend' | 'manual'
   emailId: string | null
+  /**
+   * The activation link, and only where the deployment has no outbound mail.
+   *
+   * Null under `resend`, because there the link went to the employee's own
+   * inbox and nobody else — including the administrator — has any business
+   * holding it. Under `manual` the administrator is the delivery mechanism, so
+   * they are given it once, in the response to their own action. It is never
+   * stored and never re-readable; re-issuing means minting a new one, which
+   * invalidates this one and writes its own audit event.
+   */
+  activationUrl: string | null
 }
 
 export class ProvisioningError extends Error {
@@ -133,25 +145,7 @@ export async function provisionGovernmentAccount(
     payload: { email, role: input.role, name: input.name, nameAr: input.nameAr ?? null },
   })
 
-  // The activation link. Better Auth's reset-password flow issues the one-time
-  // token; src/lib/auth/index.ts notices the PENDING_ACTIVATION status and
-  // sends the activation wording rather than the reset wording.
-  await auth.api.requestPasswordReset({
-    body: { email, redirectTo: `${env.APP_URL}/activate` },
-  })
-
-  await recordAuditEvent({
-    action: 'ACTIVATION_EMAIL_SENT',
-    entityType: 'User',
-    entityId: userId,
-    actorUserId: actor.userId,
-    actorRole: actor.role,
-    actorLabel: `${actor.name} (${roleLabel(actor.role).en})`,
-    reason: `Activation link sent to ${email} by real email (driver: ${env.EMAIL_PROVIDER}).`,
-    ipAddress: actor.ipAddress ?? null,
-    userAgent: actor.userAgent ?? null,
-    payload: { email, driver: env.EMAIL_PROVIDER },
-  })
+  const activationUrl = await issueActivationLink(email, userId, actor)
 
   return {
     userId,
@@ -159,7 +153,171 @@ export async function provisionGovernmentAccount(
     role: input.role,
     emailDriver: env.EMAIL_PROVIDER,
     emailId: null,
+    activationUrl,
   }
+}
+
+/**
+ * Mint a one-time activation link and deliver it.
+ *
+ * Better Auth's reset-password flow issues the token; src/lib/auth/index.ts
+ * notices the PENDING_ACTIVATION status and sends the activation wording
+ * rather than the reset wording.
+ *
+ * Split out of `provisionGovernmentAccount` because an activation link is a
+ * thing that expires, and an employee who was on leave for a fortnight needs a
+ * new one without a new account — accounts are never deleted, so "create it
+ * again" is not available and should not be.
+ *
+ * Returns the URL only under `EMAIL_PROVIDER=manual`; see ProvisionResult.
+ */
+async function issueActivationLink(
+  email: string,
+  userId: string,
+  actor: ProvisionActor,
+): Promise<string | null> {
+  const { links } = await captureIssuedLinks(async () => {
+    await auth.api.requestPasswordReset({
+      body: { email, redirectTo: `${env.APP_URL}/activate` },
+    })
+  })
+
+  const captured = links.find((l) => l.to === email)?.url ?? null
+  const handedToAdmin = env.EMAIL_PROVIDER === 'manual'
+
+  await recordAuditEvent({
+    action: 'ACTIVATION_LINK_ISSUED',
+    entityType: 'User',
+    entityId: userId,
+    actorUserId: actor.userId,
+    actorRole: actor.role,
+    actorLabel: `${actor.name} (${roleLabel(actor.role).en})`,
+    reason: handedToAdmin
+      ? `Activation link issued for ${email} and shown once to the administrator for out-of-band handover (driver: manual — this deployment has no outbound mail).`
+      : `Activation link sent to ${email} by email (driver: ${env.EMAIL_PROVIDER}).`,
+    ipAddress: actor.ipAddress ?? null,
+    userAgent: actor.userAgent ?? null,
+    // The link itself is never written to the trail. That the link was issued,
+    // to whom, by whom, and how it travelled — that is the auditable fact.
+    payload: { email, driver: env.EMAIL_PROVIDER, handedToAdmin },
+  })
+
+  return handedToAdmin ? captured : null
+}
+
+/**
+ * Re-issue an activation or password-reset link for an existing account.
+ *
+ * Minting a new token invalidates the previous one, so this is also the
+ * remedy for a link believed to have been seen by the wrong person.
+ */
+export async function reissueActivationLink(
+  input: { userId: string },
+  actor: ProvisionActor,
+): Promise<{ email: string; activationUrl: string | null }> {
+  if (actor.role !== 'SYSTEM_ADMIN') {
+    throw new ProvisioningError(
+      'Only a system administrator can issue an activation link.',
+      'NOT_SYSTEM_ADMIN',
+    )
+  }
+
+  const user = await db.user.findUnique({
+    where: { id: input.userId },
+    select: { email: true, status: true },
+  })
+  if (!user) throw new ProvisioningError('No such account.', 'NOT_FOUND')
+
+  if (user.status === 'SUSPENDED') {
+    throw new ProvisioningError(
+      'This account is suspended. Reactivate it before issuing an activation link — a suspended employee must not be able to set a password and sign in.',
+      'ACCOUNT_SUSPENDED',
+    )
+  }
+
+  const activationUrl = await issueActivationLink(user.email, input.userId, actor)
+  return { email: user.email, activationUrl }
+}
+
+/**
+ * Change the role an account holds. §4 control 3 — it takes effect on the
+ * holder's very next request, because `getSession` re-reads the role from the
+ * database rather than trusting the session cookie.
+ *
+ * Two refusals are load-bearing rather than defensive:
+ *
+ *   · A government account cannot be moved to a broker role, or the reverse.
+ *     A broker role carries `brokerEntityId`, which is what scopes a broker to
+ *     their own file; an official who acquired one would be scoped to somebody
+ *     else's firm.
+ *   · An administrator cannot change their own role. Not because demoting
+ *     yourself is dangerous, but because *promoting* yourself is: without this,
+ *     one compromised administrator account is every role in the Authority.
+ */
+export async function changeAccountRole(
+  input: { userId: string; role: Role; reason: string },
+  actor: ProvisionActor,
+): Promise<void> {
+  if (actor.role !== 'SYSTEM_ADMIN') {
+    throw new ProvisioningError('Only a system administrator can change a role.', 'NOT_SYSTEM_ADMIN')
+  }
+  if (!input.reason?.trim()) {
+    throw new ProvisioningError('A role change must state a reason.', 'REASON_REQUIRED')
+  }
+  if (input.userId === actor.userId) {
+    throw new ProvisioningError(
+      'An administrator cannot change their own role. Ask a second administrator to make the change, so that no single account can grant itself a new one.',
+      'SELF_ROLE_CHANGE',
+    )
+  }
+  if (!isGovernmentRole(input.role)) {
+    throw new ProvisioningError(
+      `${input.role} is not a government role. Broker roles are held by the supervised population and are set when their file is created, never from this screen.`,
+      'NOT_A_GOVERNMENT_ROLE',
+    )
+  }
+
+  const user = await db.user.findUnique({
+    where: { id: input.userId },
+    select: { role: true, email: true, status: true },
+  })
+  if (!user) throw new ProvisioningError('No such account.', 'NOT_FOUND')
+
+  if (!isGovernmentRole(user.role)) {
+    throw new ProvisioningError(
+      'This is a broker account. A broker cannot be given a government role from the accounts screen — the supervised population and the supervisor are not the same register.',
+      'NOT_A_GOVERNMENT_ACCOUNT',
+    )
+  }
+
+  if (user.role === input.role) {
+    throw new ProvisioningError(
+      `This account already holds ${roleLabel(input.role).en}.`,
+      'ROLE_UNCHANGED',
+    )
+  }
+
+  await db.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: input.userId }, data: { role: input.role } })
+
+    await recordAuditEvent(
+      {
+        action: 'ACCOUNT_ROLE_CHANGED',
+        entityType: 'User',
+        entityId: input.userId,
+        actorUserId: actor.userId,
+        actorRole: actor.role,
+        actorLabel: `${actor.name} (${roleLabel(actor.role).en})`,
+        fromState: user.role,
+        toState: input.role,
+        reason: input.reason,
+        ipAddress: actor.ipAddress ?? null,
+        userAgent: actor.userAgent ?? null,
+        payload: { email: user.email, from: user.role, to: input.role },
+      },
+      tx,
+    )
+  })
 }
 
 /**

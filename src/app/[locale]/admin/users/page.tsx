@@ -20,6 +20,7 @@ import {
 import { Users } from '@/components/ui/icon'
 import { DualName, Stamp } from '@/components/ui/bidi'
 import { CreateAccountForm } from './create-account-form'
+import { AccountActions } from './account-actions'
 
 const PAGE_SIZE = 200
 
@@ -63,6 +64,26 @@ export default async function UsersPage({ params }: { params: Promise<{ locale: 
   const toneFor = (status: string) =>
     status === 'ACTIVE' ? 'confirmed' : status === 'SUSPENDED' ? 'blocking' : 'caution'
 
+  const govRoleOptions = GOVERNMENT_ROLES.map((r) => ({
+    value: r,
+    label: loc === 'ar' ? roleLabels[r].ar : roleLabels[r].en,
+  }))
+
+  const actionLabels = {
+    manage: t('manage'), close: t('close'), changeRole: t('changeRole'),
+    newRole: t('newRole'), reason: t('reason'), reasonHint: t('reasonHint'),
+    suspend: t('suspend'), reactivate: t('reactivate'), issueLink: t('issueLink'),
+    working: t('working'), doneTitle: t('doneTitle'),
+    failedTitle: t('actionFailedTitle'), failedNext: t('failedNext'), failedWho: t('failedWho'),
+    linkTitle: t('linkTitle'), linkLead: t('linkLead'), linkCopy: t('linkCopy'),
+    linkCopied: t('linkCopied'), linkOnce: t('linkOnce'),
+  }
+
+  const blockedHeadings = {
+    what: tBlocked('whatHeading'), why: tBlocked('whyHeading'),
+    next: tBlocked('nextHeading'), who: tBlocked('whoHeading'),
+  }
+
   return (
     <Shell locale={loc} session={session}>
       <PageHeader title={t('title')} lead={t('lead')} />
@@ -85,11 +106,10 @@ export default async function UsersPage({ params }: { params: Promise<{ locale: 
       <div className="grid gap-6 2xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
         <Panel title={t('createHeading')} className="w-full max-w-xl 2xl:max-w-none">
           <CreateAccountForm
-            roles={GOVERNMENT_ROLES.map((r) => ({
-              value: r,
-              label: loc === 'ar' ? roleLabels[r].ar : roleLabels[r].en,
-            }))}
+            roles={govRoleOptions}
             labels={{
+              linkTitle: t('linkTitle'), linkLead: t('linkLead'),
+              linkCopy: t('linkCopy'), linkCopied: t('linkCopied'), linkOnce: t('linkOnce'),
               name: t('name'), nameAr: t('nameAr'), email: t('email'), role: t('role'),
               create: t('create'), creating: t('creating'),
               createdTitle: t('createdTitle'), createdNext: t('createdNext'),
@@ -97,10 +117,7 @@ export default async function UsersPage({ params }: { params: Promise<{ locale: 
               failedWho: t('failedWho'),
             }}
             createdLeadTemplate={t('createdLead', { email: '{email}' })}
-            headings={{
-              what: tBlocked('whatHeading'), why: tBlocked('whyHeading'),
-              next: tBlocked('nextHeading'), who: tBlocked('whoHeading'),
-            }}
+            headings={blockedHeadings}
           />
         </Panel>
 
@@ -125,11 +142,12 @@ export default async function UsersPage({ params }: { params: Promise<{ locale: 
                     that overlaps the next column is a status nobody trusts. */}
                 <Th className="w-40">{t('colStatus')}</Th>
                 <Th className="w-24">{t('colCreated')}</Th>
+                <Th className="w-28">{t('colActions')}</Th>
               </tr>
             </thead>
             <tbody>
               {users.length === 0 ? (
-                <TableEmptyRow colSpan={5}>
+                <TableEmptyRow colSpan={6}>
                   <EmptyState
                     icon={Users}
                     title={t('emptyTitle')}
@@ -162,6 +180,23 @@ export default async function UsersPage({ params }: { params: Promise<{ locale: 
                     </Td>
                     <Td>
                       <Stamp value={u.createdAt} className="text-xs text-ink-muted" />
+                    </Td>
+                    {/*
+                      The controls live in the row rather than on a separate
+                      screen, because every one of them is a decision about
+                      *this* person and an administrator who has to navigate
+                      away loses the list position they were working down.
+                      The panel expands in place, over the full row width.
+                    */}
+                    <Td className="align-top">
+                      <AccountActions
+                        userId={u.id}
+                        status={u.status}
+                        isSelf={u.id === session.userId}
+                        roles={govRoleOptions}
+                        labels={actionLabels}
+                        headings={blockedHeadings}
+                      />
                     </Td>
                   </tr>
                 ))

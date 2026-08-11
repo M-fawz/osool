@@ -9,6 +9,7 @@ import {
   passwordResetEmail,
 } from '@/lib/email/templates'
 import { roleLabel } from './roles'
+import { noteIssuedLink } from './link-capture'
 
 /**
  * Better Auth configuration. 02-SYSTEM-ARCHITECTURE §4.
@@ -58,6 +59,14 @@ export const auth = betterAuth({
 
       const displayName = record?.nameAr ?? record?.name ?? user.name
 
+      // Before the send, not after: a provider that rejects the message must
+      // not also lose the link. See src/lib/auth/link-capture.ts.
+      noteIssuedLink({
+        kind: record?.status === 'PENDING_ACTIVATION' ? 'activation' : 'reset',
+        to: user.email,
+        url,
+      })
+
       if (record?.status === 'PENDING_ACTIVATION') {
         const labels = roleLabel(record.role)
         await sendEmail(
@@ -92,6 +101,7 @@ export const auth = betterAuth({
         where: { id: user.id },
         select: { nameAr: true, name: true },
       })
+      noteIssuedLink({ kind: 'verification', to: user.email, url })
       await sendEmail(
         brokerVerificationEmail({
           to: user.email,

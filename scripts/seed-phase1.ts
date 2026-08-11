@@ -47,6 +47,7 @@ import { putDocument, sha256, storageKeyFor } from '@/lib/storage'
 import { renderPng } from '@/lib/pdf/render'
 import { closePdfBrowser } from '@/lib/pdf/render'
 import { DEMO_BROKERS, DEMO_COMPLETIONS, DEMO_OFFICIALS, type DemoBroker } from './lib/demo-data'
+import { announceDemonstrationTarget, requireSeedableTarget } from './lib/demonstration-gate'
 
 const DEV_PASSWORD = 'DevOnly!Osool2026'
 
@@ -67,27 +68,12 @@ const OWNER_ADMIN = {
   role: 'SYSTEM_ADMIN' as const,
 }
 
-function refuseOutsideDevelopment() {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error(
-      'seed:phase1 refuses to run with NODE_ENV=production. It creates accounts with published ' +
-        'passwords and a register of invented brokers; neither belongs on a deployed system.',
-    )
-  }
-
-  const host = (() => {
-    try {
-      return new URL(process.env.DATABASE_URL ?? '').hostname
-    } catch {
-      return ''
-    }
-  })()
-
-  if (!['localhost', '127.0.0.1', '::1'].includes(host)) {
-    throw new Error(
-      `seed:phase1 refuses to run against a non-local database (host: ${host || 'unparseable'}).`,
-    )
-  }
+/**
+ * Where this may run. See scripts/lib/demonstration-gate.ts for why a hosted
+ * deployment is allowed at all and what it takes to unlock one.
+ */
+function checkTarget(flagGiven: boolean): { hosted: boolean } {
+  return requireSeedableTarget({ script: 'seed:phase1', flagGiven })
 }
 
 function actorFor(user: User): ActorContext {
@@ -687,11 +673,15 @@ function hash(value: string): number {
 
 async function main() {
   const { values } = parseArgs({
-    options: { reset: { type: 'boolean', default: false } },
+    options: {
+      reset: { type: 'boolean', default: false },
+      'demonstration-deployment': { type: 'boolean', default: false },
+    },
     allowPositionals: true,
   })
 
-  refuseOutsideDevelopment()
+  const { hosted } = checkTarget(values['demonstration-deployment'])
+  announceDemonstrationTarget(hosted)
 
   console.log('\nOsool — Phase 1 demonstration register\n')
 
@@ -843,11 +833,11 @@ async function main() {
   console.log(`  documents         ${documents}`)
 
   console.log('\n─────────────────────────────────────────────────────────────────────')
-  console.log('DEVELOPMENT ACCOUNTS — WEAK PASSWORDS. NEVER DEPLOY THIS DATA.')
+  console.log('DEMONSTRATION ACCOUNTS — PUBLISHED PASSWORDS. NOT A REGISTER OF RECORD.')
   console.log(`  ${OWNER_ADMIN.email}  /  ${OWNER_ADMIN.password}`)
   console.log(`  every other account below  /  ${DEV_PASSWORD}`)
   console.log('─────────────────────────────────────────────────────────────────────')
-  console.log('\nSign in at http://localhost:3000\n')
+  console.log(`\nSign in at ${hosted ? (process.env.APP_URL ?? '<APP_URL>') : 'http://localhost:3000'}\n`)
 
   await closePdfBrowser()
   await db.$disconnect()
