@@ -548,5 +548,22 @@
     "stepCurrent": "Current step",
     "stepPending": "Not started",
     "intakeRecordedPages": "The registry clerk recorded {intake} pages at the counter. Count again and enter what actually reached the archive."
+  },
+  "verify": {
+    "pageTitle": "Registration check",
+    "resultFor": "Registration number checked",
+    "verifiedTitle": "Registered.",
+    "verifiedLead": "This number belongs to an entity currently entered in the Real Estate Brokers Register.",
+    "unverifiedTitle": "Not registered.",
+    "unverifiedLead": "This number does not correspond to a registration that is valid today. It may never have been issued, or it may no longer be in force.",
+    "firmName": "Registered entity",
+    "category": "Category",
+    "types": "Permitted types",
+    "governorate": "Governorate of head office",
+    "validFrom": "Valid from",
+    "validTo": "Valid until",
+    "scopeVerified": "This confirms entry in the register on today’s date. It is not an endorsement of the entity’s conduct, and it says nothing about any individual transaction.",
+    "scopeUnverified": "Check the number as it is written on the entity’s correspondence — it takes the form 2026/0001. If it is written exactly as shown and still does not verify, the entity is not currently registered, and dealing with it as a broker is at your own risk.",
+    "checkAnother": "Check another number"
   }
 }

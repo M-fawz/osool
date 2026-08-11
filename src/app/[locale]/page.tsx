@@ -96,7 +96,17 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
             </div>
           </div>
 
-          <form action="/verify" className="flex flex-col gap-3 p-5 sm:flex-row sm:items-end">
+          {/*
+            A plain GET form, and the action is built from the locale rather
+            than written as "/verify". Arabic is unprefixed, so the literal
+            path is the Arabic route — an English reader who submitted this
+            form was silently switched into Arabic at the one moment they were
+            trying to read an answer.
+          */}
+          <form
+            action={loc === 'ar' ? '/verify' : `/${loc}/verify`}
+            className="flex flex-col gap-3 p-5 sm:flex-row sm:items-end"
+          >
             <div className="min-w-0 flex-1">
               <label htmlFor="registration-number" className="sr-only">
                 {t('verifyPlaceholder')}
