@@ -169,7 +169,43 @@ export async function startApplicationAction(): Promise<
   if (existingDraft) return { ok: true, applicationId: existingDraft.id }
 
   const applicationId = await db.$transaction(async (tx) => {
-    let brokerEntityId = session.brokerEntityId
+    /*
+     * Lock the account row before deciding whether this broker has a firm.
+     *
+     * The check above reads the session, which was resolved before this
+     * request's work began. Two presses of "start" on a broker's *first*
+     * application both saw `brokerEntityId === null`, both created a Party and
+     * a BrokerEntity, and the second `user.update` won — leaving the account
+     * pointing at firm B while the browser had been sent into firm A's
+     * application. Every subsequent save then failed `notYourApplication()`,
+     * and the only way out a broker could find was to sign out and back in,
+     * which landed them on whichever draft matched the firm that had won.
+     *
+     * The lock serialises the two, and the re-read inside it is what makes the
+     * loser adopt the winner's firm instead of creating a second one. Same
+     * idiom as src/lib/applications/transition.ts, for the same reason: the
+     * database decides who writes, not the order the requests happened to
+     * arrive in.
+     */
+    await tx.$executeRaw`SELECT id FROM "user" WHERE id = ${session.userId} FOR UPDATE`
+
+    const current = await tx.user.findUnique({
+      where: { id: session.userId },
+      select: { brokerEntityId: true },
+    })
+
+    let brokerEntityId = current?.brokerEntityId ?? null
+
+    // The concurrent press got there first and made the firm. It may also have
+    // made the draft; returning that one is the whole point of the guard.
+    if (brokerEntityId) {
+      const raced = await tx.application.findFirst({
+        where: { brokerEntityId, status: 'DRAFT', archivedAt: null },
+        orderBy: { updatedAt: 'desc' },
+        select: { id: true },
+      })
+      if (raced) return raced.id
+    }
 
     if (!brokerEntityId) {
       const party = await tx.party.create({
