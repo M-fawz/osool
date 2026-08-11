@@ -33,7 +33,11 @@
     "admin:create": "tsx scripts/create-admin.ts",
     "dev:accounts": "tsx scripts/dev-accounts.ts",
     "seed:phase1": "tsx scripts/seed-phase1.ts",
-    "proof:phase1": "tsx scripts/proof-phase1.ts"
+    "proof:phase1": "tsx scripts/proof-phase1.ts",
+    "qa:routes": "node scripts/qa/routes.mjs",
+    "qa:database": "node scripts/qa/database.mjs",
+    "qa:admin": "node scripts/qa/administration.mjs",
+    "qa:lifecycle": "node scripts/qa/account-lifecycle.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

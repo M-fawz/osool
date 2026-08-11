@@ -78,7 +78,7 @@ environments it belongs to. Values are never printed in this repository.
 | `DATABASE_URL` | PostgreSQL connection. On a serverless host this must be the **pooled** endpoint — see [Database](#database). | ✅ local | ✅ **separate DB** | ✅ |
 | `BETTER_AUTH_SECRET` | Signs session cookies and activation tokens. 32 random bytes. Different per environment. | ✅ | ✅ | ✅ |
 | `PII_ENCRYPTION_KEY` | AES-GCM key for identifying personal data, REQ-DPA-002. 32 random bytes. **Never rotate without re-encrypting.** | ✅ | ✅ | ✅ |
-| `EMAIL_PROVIDER` | `resend` in anything that serves real users. `console` only locally. | `console` | `resend` | `resend` |
+| `EMAIL_PROVIDER` | `resend` in anything that serves real users; `manual` where the deployment genuinely has no outbound mail; `console` only locally. See below. | `console` | `resend` \| `manual` | `resend` \| `manual` |
 | `RESEND_API_KEY` | Resend API key. Required when `EMAIL_PROVIDER=resend`. | — | ✅ | ✅ |
 | `EMAIL_FROM` | Sender identity on activation and verification email. Must be a verified Resend domain. | — | ✅ | ✅ |
 | `STORAGE_DRIVER` | `s3` in anything hosted. `local` is refused at startup in production. | `local` | `s3` | `s3` |
@@ -135,6 +135,27 @@ event first. A public bucket would route around both.
 
 Activation links are really sent; there is no outbox table an administrator reads links out of.
 Verify a sending domain in Resend and set `EMAIL_FROM` to an address on it.
+
+#### When there is no outbound mail at all
+
+Some deployments have none — a demonstration, an evaluation environment, an air-gapped
+installation — and pretending otherwise is worse than saying so. `EMAIL_PROVIDER=manual` states it:
+
+- Nothing is queued, stored, or retried. There is still no outbox table.
+- The one-time link is returned **to the administrator who caused it to be issued**, once, in the
+  response to their own action, and is never re-readable. Under `resend` it is never shown to
+  anyone but the recipient — the administrator has no business holding it.
+- The administrator hands it over out of band and re-issues it if it is lost, which mints a new
+  token and invalidates the old one.
+- Everything is audited the same way: `ACTIVATION_LINK_ISSUED` records who issued it, to whom, and
+  by which driver. **The link itself is never written to the trail.**
+
+`console` stays refused in production. A deployment that serves real users and quietly writes
+activation links to a log has the same failure as an outbox and less of an audit trail.
+
+To move a `manual` deployment onto real mail: verify a domain in Resend, set `RESEND_API_KEY` and
+`EMAIL_FROM`, change `EMAIL_PROVIDER` to `resend`, and redeploy. No code changes, and accounts
+already provisioned are unaffected.
 
 ### 4. Connect the repository
 
