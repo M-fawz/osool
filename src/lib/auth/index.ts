@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { db } from '@/lib/db'
+import { recordAuditEvent } from '@/lib/audit'
 import { env, trustedOrigins } from '@/lib/env'
 import { sendEmail } from '@/lib/email'
 import {
@@ -90,6 +91,56 @@ export const auth = betterAuth({
           expiresInHours: ACTIVATION_EXPIRY_HOURS,
         }),
       )
+    },
+
+    /**
+     * The moment an account actually becomes usable.
+     *
+     * Provisioning leaves the account PENDING_ACTIVATION with an unverified
+     * address, which is right: it has no password anyone chose and nobody has
+     * proved they can read the mailbox. Setting a password from the one-time
+     * link proves both — the link only ever went to that address, and the
+     * password is the holder's own.
+     *
+     * Without this the account is stranded. It has a working password and
+     * `requireEmailVerification` still refuses the sign-in, so the employee
+     * gets "Email not verified" on a screen that has just told them their
+     * password was set. That is not a state any employee could get themselves
+     * out of, and no administrator could either.
+     *
+     * An ordinary forgotten-password reset lands here too and must change
+     * nothing: an ACTIVE account stays ACTIVE, and — this is the important one
+     * — a SUSPENDED account is not quietly reinstated by its holder resetting
+     * their own password. Only the PENDING_ACTIVATION transition is applied.
+     */
+    onPasswordReset: async ({ user }) => {
+      const record = await db.user.findUnique({
+        where: { id: user.id },
+        select: { status: true, role: true, emailVerified: true },
+      })
+      if (record?.status !== 'PENDING_ACTIVATION') return
+
+      await db.user.update({
+        where: { id: user.id },
+        data: { status: 'ACTIVE', emailVerified: true },
+      })
+
+      await recordAuditEvent({
+        action: 'ACCOUNT_ACTIVATED',
+        entityType: 'User',
+        entityId: user.id,
+        // The holder is acting, and they have no session yet — they are
+        // proving who they are by holding the link. Naming them as the actor
+        // is accurate; inventing an administrator would not be.
+        actorUserId: user.id,
+        actorRole: record.role,
+        actorLabel: `${user.email} (account holder)`,
+        fromState: 'PENDING_ACTIVATION',
+        toState: 'ACTIVE',
+        reason:
+          'The holder set their own password from the one-time activation link, which proves control of the address the link was issued to.',
+        payload: { email: user.email, role: record.role },
+      })
     },
   },
 
