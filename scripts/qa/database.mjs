@@ -58,6 +58,11 @@ check('application has a delete guard', guarded.has('application'), 'no DELETE t
 // Prove it, rather than trusting the catalogue.
 let refused = false
 try {
+  // This statement exists to be *refused*. It is the test that the database's
+  // own guard works, and the suite fails if the delete ever succeeds. Removing
+  // it would remove the only proof that CLAUDE.md §2 is enforced *below* the
+  // application rather than merely by it.
+  // no-delete-allowed: proves the guard, does not defeat it.
   await db.$executeRawUnsafe(`delete from audit_event where seq = (select min(seq) from audit_event)`)
 } catch (e) {
   refused = true

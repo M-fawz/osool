@@ -2,8 +2,9 @@ import Image from 'next/image'
 import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
 import type { Locale } from '@/i18n/routing'
+import { isGovernmentRole, personName, roleLabel } from '@/lib/auth/roles'
 import type { Session } from '@/lib/auth/session'
-import { SignOutButton } from './sign-out-button'
+import { AccountMenu } from './account-menu'
 
 /**
  * The broker portal's chrome.
@@ -21,9 +22,7 @@ import { SignOutButton } from './sign-out-button'
  */
 export async function PortalShell({
   locale,
-  // Accepted so that every shell takes the same props and a page can be moved
-  // between them, but not rendered: this chrome shows the firm, not the person.
-  session: _session,
+  session,
   children,
   /** Shown under the wordmark: which firm this is. */
   firmName,
@@ -41,6 +40,13 @@ export async function PortalShell({
   const t = await getTranslations('nav')
   const tApp = await getTranslations('app')
   const otherLocale: Locale = locale === 'ar' ? 'en' : 'ar'
+
+  // The chrome used to show the firm and nothing else, on the reasoning that a
+  // broker knows who they are. They do — but a firm may have an owner, staff
+  // and an authorised agent all filing against the same file, and "which of us
+  // is this browser signed in as" is then a real question with a legal answer.
+  const who = personName(session, locale)
+  const labels = roleLabel(session.role)
 
   return (
     <div className="flex min-h-dvh flex-col bg-paper-sunk">
@@ -78,7 +84,25 @@ export async function PortalShell({
             >
               {t('switchToEnglish')}
             </Link>
-            <SignOutButton label={t('signOut')} size="touch" />
+            <AccountMenu
+              identity={{
+                name: who.primary,
+                secondary: who.secondary,
+                email: session.email,
+                role: locale === 'ar' ? labels.ar : labels.en,
+                organisation: firmName ?? null,
+                organisationLabel: t('accountFirm'),
+                government: isGovernmentRole(session.role),
+              }}
+              labels={{
+                account: t('account'),
+                signedInAs: t('signedInAs'),
+                role: t('accountRole'),
+                email: t('accountEmail'),
+                organisation: t('accountOrganisation'),
+                signOut: t('signOut'),
+              }}
+            />
           </div>
         </div>
       </header>

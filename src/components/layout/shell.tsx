@@ -2,9 +2,9 @@ import Image from 'next/image'
 import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
 import type { Locale } from '@/i18n/routing'
-import { personName, roleLabel } from '@/lib/auth/roles'
+import { isGovernmentRole, personName, roleLabel } from '@/lib/auth/roles'
 import type { Session } from '@/lib/auth/session'
-import { SignOutButton } from './sign-out-button'
+import { AccountMenu } from './account-menu'
 import { SidebarNav } from './sidebar-nav'
 import { MobileNav } from './mobile-nav'
 import { navSectionsFor, type ResolvedNavSection } from './nav-items'
@@ -104,7 +104,25 @@ export async function Shell({
             >
               {t('switchToEnglish')}
             </Link>
-            <SignOutButton label={t('signOut')} />
+            <AccountMenu
+              identity={{
+                name: who.primary,
+                secondary: who.secondary,
+                email: session.email,
+                role: locale === 'ar' ? labels.ar : labels.en,
+                organisation: tApp('authority'),
+                organisationLabel: t('accountOrganisation'),
+                government: isGovernmentRole(session.role),
+              }}
+              labels={{
+                account: t('account'),
+                signedInAs: t('signedInAs'),
+                role: t('accountRole'),
+                email: t('accountEmail'),
+                organisation: t('accountOrganisation'),
+                signOut: t('signOut'),
+              }}
+            />
           </div>
         </div>
       </header>
