@@ -135,9 +135,12 @@ export function FeesForm({
                 dir="ltr"
                 className="tabular w-36"
                 value={amounts[heading.key] ?? ''}
-                onChange={(event) =>
-                  setAmounts((current) => ({ ...current, [heading.key]: event.currentTarget.value }))
-                }
+                onChange={(event) => {
+                  // Read the value before the updater runs: React may invoke a functional
+                  // updater after the event has been recycled, when currentTarget is null.
+                  const value = event.currentTarget.value
+                  setAmounts((current) => ({ ...current, [heading.key]: value }))
+                }}
               />
             </div>
           ))}

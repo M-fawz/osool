@@ -467,9 +467,12 @@ function CompletionsComposer({
           <Select
             id="completion-item"
             value={draft.checklistItemKey}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, checklistItemKey: event.currentTarget.value }))
-            }
+            onChange={(event) => {
+              // Read the value before the updater runs: React may invoke a functional
+              // updater after the event has been recycled, when currentTarget is null.
+              const value = event.currentTarget.value
+              setDraft((current) => ({ ...current, checklistItemKey: value }))
+            }}
           >
             <option value="">{t('completionChecklistNone')}</option>
             {choices.map((choice) => (
@@ -485,9 +488,10 @@ function CompletionsComposer({
             id="completion-ar"
             rows={2}
             value={draft.descriptionAr}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, descriptionAr: event.currentTarget.value }))
-            }
+            onChange={(event) => {
+              const value = event.currentTarget.value
+              setDraft((current) => ({ ...current, descriptionAr: value }))
+            }}
             lang="ar"
             dir="rtl"
           />
@@ -498,9 +502,10 @@ function CompletionsComposer({
             id="completion-en"
             rows={2}
             value={draft.descriptionEn}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, descriptionEn: event.currentTarget.value }))
-            }
+            onChange={(event) => {
+              const value = event.currentTarget.value
+              setDraft((current) => ({ ...current, descriptionEn: value }))
+            }}
             lang="en"
             dir="ltr"
           />
