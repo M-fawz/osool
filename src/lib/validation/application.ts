@@ -30,12 +30,31 @@ function text(max: number, min = 1) {
     .max(max, { message: 'tooLong' })
 }
 
+/**
+ * "Optional" has to mean *absent*, not merely empty.
+ *
+ * `FormData.get()` returns `null` for a field that is not on the page at all,
+ * and `z.string().optional()` accepts `undefined` while refusing `null`. Every
+ * optional validator below is therefore nullish rather than optional — and one
+ * of them not being so was a blocker nobody had found.
+ *
+ * The fee form renders the bank name, the branch and the cheque number only
+ * when the payment method is *not* cash. So a cash payment — the ordinary case,
+ * and the one the demonstration uses — posted three nulls and was refused with
+ * "Expected string, received null" against three fields the treasurer could not
+ * see and had not been asked to fill in. Card issuance could not be completed
+ * at all, by anyone, ever. Found by driving the workflow to the end rather than
+ * by reading the schema, which is the only way this class of fault surfaces.
+ *
+ * The leaked message is the second reason it must not happen: it is Zod's own
+ * English, on an Arabic-first screen, naming a type rather than a problem.
+ */
 const optionalText = (max: number) =>
   z
     .string()
     .trim()
     .max(max, { message: 'tooLong' })
-    .optional()
+    .nullish()
     .transform((v) => (v ? v : null))
 
 /**
@@ -60,7 +79,7 @@ const optionalLatinText = (max: number) =>
     .string()
     .trim()
     .max(max, { message: 'tooLong' })
-    .optional()
+    .nullish()
     .transform((v) => (v ? v : null))
     .refine((v) => v === null || LATIN.test(v), { message: 'needsLatin' })
 
@@ -114,7 +133,7 @@ const isoDate = z
 const optionalIsoDate = z
   .string()
   .trim()
-  .optional()
+  .nullish()
   .transform((v) => (v ? new Date(`${v}T00:00:00.000Z`) : null))
   .refine((d) => d === null || !Number.isNaN(d.getTime()), { message: 'dateFormat' })
 
@@ -134,7 +153,7 @@ const money = z
 const optionalMoney = z
   .string()
   .trim()
-  .optional()
+  .nullish()
   .transform((v) => (v && v.trim() ? Number(v.replace(/[,\s]/g, '')) : null))
   .refine((n) => n === null || (Number.isFinite(n) && n >= 0), { message: 'numberFormat' })
 
@@ -220,7 +239,7 @@ export const EntityDataSchema = z
     email: z
       .string()
       .trim()
-      .optional()
+      .nullish()
       .transform((v) => (v ? v : null))
       .refine((v) => v === null || z.string().email().safeParse(v).success, { message: 'emailFormat' }),
 
