@@ -57,6 +57,8 @@ export interface DocumentItem {
   key: string
   label: string
   description: string | null
+  /** Why this conditional item is being asked for, from the rule set. */
+  conditionNote: string | null
   required: boolean
   acceptedMimeTypes: string[]
   maxSizeMb: number
@@ -226,6 +228,27 @@ function DocumentCard({
           {item.description ? (
             <p className="mt-0.5 max-w-reading text-sm text-ink-muted">{item.description}</p>
           ) : null}
+
+          {/* The facts an applicant needs *before* photographing anything, and
+              which the card used to carry in its props without ever drawing:
+              what this accepts and how large it may be. */}
+          <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-faint">
+            <span>
+              {t('docAccepts')}: <span className="ltr-run">{formatAccepted(item.acceptedMimeTypes)}</span>
+            </span>
+            <span aria-hidden="true">·</span>
+            <span>
+              {t('docMaxSize')}: <span className="ltr-run">{item.maxSizeMb} MB</span>
+            </span>
+          </p>
+
+          {/* A conditional item that says nothing about its condition reads as
+              an arbitrary demand. This is the rule set's own wording. */}
+          {item.conditionNote ? (
+            <p className="mt-1 max-w-reading text-xs text-ink-faint">
+              {t('docCondition')}: {item.conditionNote}
+            </p>
+          ) : null}
         </div>
 
         {item.document ? (
@@ -236,6 +259,8 @@ function DocumentCard({
           <Status tone="neutral">{t('documentsOptional')}</Status>
         )}
       </div>
+
+      <DocumentHelp itemKey={item.key} />
 
       {item.document ? (
         <div className="border-t border-rule px-4 py-3">
@@ -362,6 +387,75 @@ function DocumentCard({
       )}
     </section>
   )
+}
+
+/**
+ * What this document is, why the Authority wants it, what to photograph, and
+ * what happens if the applicant does not have one.
+ *
+ * Four questions, because those are the four a person actually has in front of
+ * a line that says «البطاقة الضريبية» and nothing else. Collapsed by default:
+ * thirteen cards each carrying four paragraphs is a wall, and the applicant who
+ * already knows what a tax card is should not have to scroll past an
+ * explanation of one.
+ *
+ * The copy lives in the message catalogue rather than in the DOC_CHECKLIST rule
+ * set, and the split is deliberate. The rule set is the authority on *what is
+ * required* — the item, whether it is mandatory, the accepted types, the size
+ * ceiling — and those are drawn above from the rule data. This is help text: it
+ * is translated like every other sentence in the interface, it carries no
+ * threshold, and changing it must not bump a regulatory version that decisions
+ * are stamped against.
+ *
+ * An item with no entry renders nothing at all rather than an empty disclosure,
+ * so a checklist item added to the rule set tomorrow degrades quietly.
+ */
+function DocumentHelp({ itemKey }: { itemKey: string }) {
+  const t = useTranslations('apply')
+  const key = (suffix: string) => `docHelp.${itemKey}.${suffix}` as 'docHelp.POWER_OF_ATTORNEY.what'
+
+  if (!t.has(key('what'))) return null
+
+  const parts: Array<{ heading: string; body: string }> = [
+    { heading: t('docHelpWhat'), body: t(key('what')) },
+    { heading: t('docHelpWhy'), body: t(key('why')) },
+    { heading: t('docHelpUpload'), body: t(key('upload')) },
+    { heading: t('docHelpMissing'), body: t(key('missing')) },
+  ]
+
+  return (
+    <details className="group border-t border-rule">
+      <summary
+        className={cn(
+          'flex min-h-11 cursor-pointer list-none items-center gap-1.5 px-4',
+          'text-sm font-medium text-navy-600 hover:underline',
+          '[&::-webkit-details-marker]:hidden',
+        )}
+      >
+        <Icon as={Info} size="xs" />
+        <span>{t('docHelpToggle')}</span>
+      </summary>
+
+      <dl className="space-y-3 border-s-2 border-brass-300 bg-paper-sunk px-4 py-3 text-sm leading-relaxed">
+        {parts.map((part) => (
+          <div key={part.heading}>
+            <dt className="font-semibold text-navy-700">{part.heading}</dt>
+            <dd className="mt-0.5 max-w-reading text-ink-muted">{part.body}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
+  )
+}
+
+/** `application/pdf, image/jpeg` → `PDF · JPEG`. */
+function formatAccepted(mimeTypes: string[]): string {
+  const seen = new Set<string>()
+  for (const type of mimeTypes) {
+    const tail = type.split('/')[1] ?? type
+    seen.add(tail === 'jpeg' ? 'JPG' : tail.toUpperCase())
+  }
+  return [...seen].join(' · ')
 }
 
 /**

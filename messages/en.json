@@ -283,7 +283,21 @@
     "obligationNumber": "The registration number must appear on all your papers, correspondence, and advertisements.",
     "obligationRenewalBefore": "Renewal falls due on",
     "obligationRenewalAfter": ", which is {days} days before it expires.",
-    "obligationNotify": "Any change to the firm’s data or to a registered brokerage contract must be notified within thirty days."
+    "obligationNotify": "Any change to the firm’s data or to a registered brokerage contract must be notified within thirty days.",
+    "whatNext": {
+      "DRAFT": "This application is still with you and has not reached the Authority. Finish the outstanding steps, then press Submit on the review step. Everything you enter is saved, and you can come back at any time.",
+      "SUBMITTED": "It has reached the Authority and is waiting to be booked in. When it is, a temporary application number appears at the top of this card. Nothing is needed from you now.",
+      "UNDER_INTAKE": "The registry clerk is booking the file in, allocating its temporary number, and assigning it to an examiner. Nothing is needed from you now.",
+      "UNDER_EXAMINATION": "An examiner is checking your details and documents item by item. If anything is missing you will receive a completion request and the application will reopen for you to correct it. Nothing is needed from you now.",
+      "AWAITING_COMPLETION": "The Authority has asked you to complete specific items. The application is open to you again — correct what is asked for, then resubmit from the review step. Examination does not resume until you resubmit.",
+      "UNDER_REVIEW": "The file is with the reviewer, who is a different official from the one who examined it. The decision to approve or refuse is theirs. Nothing is needed from you now.",
+      "APPROVED": "The application has been approved. Next come the fees and then the card. The issuance status will appear here as it changes.",
+      "REJECTED": "The application was refused, and the reason is recorded inside it. Read the reason, then contact the Authority if you have something to put to them.",
+      "AWAITING_PAYMENT": "Fees have been recorded and the file is waiting for the card to be issued.",
+      "CARD_ISSUED": "The card has been issued and is waiting to be handed over. Your permanent registration number appears on the \"My registration\" page once it has been.",
+      "ACTIVE": "The registration is in force. The permanent registration number and the card are on the \"My registration\" page, and the number must appear on everything you issue.",
+      "WITHDRAWN": "This application was withdrawn and is no longer under consideration. You may start a new one."
+    }
   },
   "apply": {
     "title": "Application to register in the Real Estate Brokers Register",
@@ -444,7 +458,95 @@
     "timelineTitle": "Progress of this application",
     "timelineLead": "Every step it has passed through, who performed it, and when.",
     "capitalBelowChosen": "The capital entered does not reach the minimum for {category}, which is {minimum}.",
-    "highestCategoryAvailable": "The highest category this capital supports is {category} — {band}."
+    "highestCategoryAvailable": "The highest category this capital supports is {category} — {band}.",
+    "docHelpToggle": "What is this document, and why is it asked for?",
+    "docHelpWhat": "What is it?",
+    "docHelpWhy": "Why we need it",
+    "docHelpUpload": "What to upload",
+    "docHelpMissing": "What if I do not have it?",
+    "docAccepts": "Accepted formats",
+    "docMaxSize": "Largest accepted",
+    "docCondition": "When it is required",
+    "docHelp": {
+      "IDENTITY_DOC_APPLICANT": {
+        "what": "A clear copy of the identity document of the person signing this application — national ID card, passport, refugee travel document, or military card.",
+        "why": "The registration is issued to a named person, and the Authority must verify who the applicant is before registering them, not afterwards.",
+        "upload": "Photograph the whole face of the document so that all four corners, the photograph and the number are visible. For a two-sided card, use the side carrying the national ID number.",
+        "missing": "The application cannot be submitted without it. If your document has expired, renew it first."
+      },
+      "COMMERCIAL_REGISTER_EXTRACT": {
+        "what": "A valid official extract from the firm's entry in the Commercial Register, or a document proving registration with the competent administrative body.",
+        "why": "It is what proves the firm exists in law and that its registered activity permits real-estate brokerage. The examiner checks the register number and issuing office you entered at step 2 against this extract.",
+        "upload": "The complete extract, all pages, showing the register number, the issuing office and the last renewal date.",
+        "missing": "The application cannot be submitted without it. Obtain it from the Commercial Register office covering your head office."
+      },
+      "TAX_REGISTRATION_CARD": {
+        "what": "The firm's tax registration card, showing the tax registration number and the competent tax office.",
+        "why": "The number and the office are two separate items on the registration form, and the Authority needs both — not the number alone.",
+        "upload": "A copy of the whole card. Check that the tax number and the office name are legible before sending.",
+        "missing": "The application cannot be submitted without it. It is issued by the Egyptian Tax Authority."
+      },
+      "PROOF_OF_PAID_UP_CAPITAL": {
+        "what": "A document evidencing the paid-up capital you are relying on for the category you are requesting — a bank certificate, or its equivalent in the incorporation papers.",
+        "why": "Each category carries a minimum paid-up capital. The system compares the figure you entered at the \"Type and category\" step against the floor for the category you asked for, and refuses the submission if it falls short.",
+        "upload": "The document that states the amount explicitly, in Egyptian pounds. The figure must match what you entered at the \"Type and category\" step.",
+        "missing": "The application cannot be submitted without it. If your capital does not reach the floor for the category you want, go back to \"Type and category\" and choose a lower one."
+      },
+      "PREMISES_PROOF": {
+        "what": "A lease or title document for the premises at which the activity is practised.",
+        "why": "A registration is tied to a known address; inspections and official correspondence go there.",
+        "upload": "The complete document, showing the address and the period it covers. The address must match what you entered at the \"The firm\" step.",
+        "missing": "The application cannot be submitted without it."
+      },
+      "CRIMINAL_RECORD_EXTRACT": {
+        "what": "A criminal record extract for the applicant.",
+        "why": "It is the document behind the declaration you will sign at the \"Declarations\" step about not having been convicted of an offence against honour or trust. The declaration on its own is not enough.",
+        "upload": "A recently issued extract, with the date of issue visible.",
+        "missing": "The application cannot be submitted without it. It is obtained from a police station or a notarisation office."
+      },
+      "ARTICLES_OF_ASSOCIATION": {
+        "what": "The company's memorandum and articles of association, or the official gazette in which they were published, together with any published amendments.",
+        "why": "It is the document that fixes the company's form, its objects, and who may represent it. The examiner checks it against the legal form you entered.",
+        "upload": "The complete document as a PDF, with amendments if there are any.",
+        "missing": "An application in the name of a legal person cannot be submitted without it. It is not asked of a sole establishment."
+      },
+      "REPRESENTATION_AUTHORISATION": {
+        "what": "Evidence that the natural person representing the company before the Authority is authorised to do so — a board resolution, or a notarised authorisation.",
+        "why": "A company does not sign for itself. The Authority needs proof that whoever signed this application was entitled to sign it.",
+        "upload": "The resolution or authorisation, showing the name of the authorised person, their capacity, and the scope of the authority given.",
+        "missing": "An application in the name of a legal person cannot be submitted without it."
+      },
+      "BENEFICIAL_OWNER_IDENTITY_DOCS": {
+        "what": "Identity documents of the natural persons holding controlling stakes of 25% or more; failing that, of natural persons controlling by other means; failing both, of the chairman or equivalent.",
+        "why": "That sequence is how a beneficial owner is identified under the customer due-diligence procedures. The point is that behind every registered company there is a known natural person.",
+        "upload": "One file gathering the identity documents of everyone who meets the description above.",
+        "missing": "An application in the name of a legal person cannot be submitted without it. If nobody reaches 25%, upload the identity document of whoever actually controls the company; failing that, of the chairman."
+      },
+      "SIGNATURE_SPECIMENS": {
+        "what": "Specimen signatures of the persons authorised to deal in the company's name.",
+        "why": "So that the Authority can verify a signature on anything the company sends it later.",
+        "upload": "The specimen form certified by the company or by its bank.",
+        "missing": "An application in the name of a legal person cannot be submitted without it."
+      },
+      "PRELIMINARY_CONTRACT_UNDER_FORMATION": {
+        "what": "The preliminary contract signed by the founders showing each one's share, together with the founders' agent's power of attorney.",
+        "why": "A company still under formation has no final contract yet, and the preliminary contract is what evidences who founded it and in what shares.",
+        "upload": "The preliminary contract and the power of attorney in one PDF.",
+        "missing": "This item is optional and is only asked for where the company is still under formation. Leave it if your company is already incorporated."
+      },
+      "OWNER_IDENTITY_DOC": {
+        "what": "The identity document of the sole establishment's owner.",
+        "why": "In a sole establishment there is no separation between the firm and its owner, so their identity is the firm's identity as far as the register is concerned.",
+        "upload": "A clear copy of the national ID card or passport.",
+        "missing": "An application in the name of a sole establishment cannot be submitted without it."
+      },
+      "POWER_OF_ATTORNEY": {
+        "what": "The notarised power of attorney authorising you to file this application on someone else's behalf.",
+        "why": "Only asked for if you chose at step 1 that you are applying as an agent under a power of attorney. Its number, year and notarisation office are recorded separately so that the same instrument being used across unrelated applications becomes visible.",
+        "upload": "The complete notarised instrument, showing its number, its year, the notarisation office, and the scope of the authority given.",
+        "missing": "If you are not an agent this item is not required in your case and is shown as optional. If you are, the application cannot be submitted without it."
+      }
+    }
   },
   "gov": {
     "queueTitle": "My queue",

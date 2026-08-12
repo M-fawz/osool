@@ -240,8 +240,20 @@ function ValidationSummary({ errors }: { errors: Record<string, string> }) {
   React.useEffect(() => {
     const found: Record<string, string> = {}
     for (const [field] of named) {
-      const label = document.querySelector<HTMLElement>(`label[for="${CSS.escape(field)}"]`)
-      const text = label?.textContent?.replace(/\s*\*\s*$/, '').trim()
+      const escaped = CSS.escape(field)
+
+      // A `Field` names its control with `label[for]`. A `ChoiceGroup` is a
+      // fieldset and names itself with a `legend` — so a radio group refused
+      // for being unanswered would otherwise appear in this list as a bare
+      // "This field is required." with nothing to say which field.
+      const naming =
+        document.querySelector<HTMLElement>(`label[for="${escaped}"]`) ??
+        document
+          .querySelector<HTMLElement>(`[name="${escaped}"]`)
+          ?.closest('fieldset')
+          ?.querySelector<HTMLElement>('legend')
+
+      const text = naming?.textContent?.replace(/\s*\*\s*$/, '').trim()
       if (text) found[field] = text
     }
     setLabels(found)

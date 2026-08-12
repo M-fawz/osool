@@ -77,15 +77,26 @@ export default async function ApplicationsPage({
   // Progress is only meaningful while a file is still the applicant's to
   // finish, so it is computed for drafts and for files awaiting completions —
   // and not for the ten other states where the answer would be a distraction.
-  const progress = new Map<string, { done: number; total: number }>()
+  //
+  // `resume` is the step the applicant actually has work on. "Continue this
+  // application" used to land on the review screen whatever state the file was
+  // in, which is the one screen that cannot be filled in: a broker with three
+  // steps left was shown a list of what was wrong and no way forward from it.
+  const progress = new Map<
+    string,
+    { done: number; total: number; resume: string; gaps: number }
+  >()
   for (const application of applications) {
     if (application.status !== 'DRAFT' && application.status !== 'AWAITING_COMPLETION') continue
     const detail = await loadApplicationDetail(application.id)
     if (!detail) continue
     const completeness = await evaluateCompleteness(detail)
+    const next = completeness.steps.find((s) => s.step !== 'review' && !s.complete)
     progress.set(application.id, {
       done: completeness.completedSteps,
       total: completeness.totalSteps,
+      resume: next?.step ?? 'review',
+      gaps: completeness.gaps.length,
     })
   }
 
@@ -141,6 +152,15 @@ export default async function ApplicationsPage({
                   </p>
                 ) : null}
 
+                {/* The one question this screen exists to answer, for every
+                    state: what is happening to my file now, and what — if
+                    anything — do I have to do about it. A status word alone
+                    tells a broker who has used this system once that their
+                    application is "under examination" and nothing else. */}
+                <p className="mt-2 max-w-reading text-sm text-ink-muted">
+                  {t(`whatNext.${application.status}` as 'whatNext.DRAFT')}
+                </p>
+
                 {application._count.completions > 0 ? (
                   <Notice tone="caution" className="mt-3">
                     {t('completionsWaiting', { count: application._count.completions })}
@@ -161,11 +181,11 @@ export default async function ApplicationsPage({
                     {t('colUpdated')}: <Stamp value={application.updatedAt} />
                   </p>
                   <Link
-                    href={
-                      application.status === 'DRAFT' || application.status === 'AWAITING_COMPLETION'
-                        ? `/application/${application.id}/review`
-                        : `/application/${application.id}/review`
-                    }
+                    // Straight to the first step with something outstanding on
+                    // it. Both arms of the ternary this replaces went to
+                    // `/review`, so "continue" meant "look at a list of your
+                    // gaps" rather than "go and close one".
+                    href={`/application/${application.id}/${steps?.resume ?? 'review'}`}
                     className="inline-flex min-h-11 items-center gap-1.5 text-base font-medium text-navy-600 hover:underline"
                   >
                     {application.status === 'DRAFT' ? t('resume') : t('openApplication')}

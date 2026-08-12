@@ -116,7 +116,13 @@ export default async function ApplicationStepPage({
         stepLabels={stepLabels}
       />
 
-      <PageHeader title={stepTitle(step as ApplicationStep, tApply)} />
+      {/* The lead was written for every one of these steps and rendered on
+          none of them, so each screen opened with a title and a form. It is the
+          sentence that says what this step is *for*. */}
+      <PageHeader
+        title={stepTitle(step as ApplicationStep, tApply)}
+        lead={stepLead(step as ApplicationStep, tApply)}
+      />
 
       {readOnly && step !== 'review' ? (
         <Notice tone="informational" className="mb-6">
@@ -153,6 +159,27 @@ function stepTitle(step: ApplicationStep, t: Awaited<ReturnType<typeof getTransl
       return t('declarationsTitle')
     case 'review':
       return t('reviewTitle')
+  }
+}
+
+function stepLead(step: ApplicationStep, t: Awaited<ReturnType<typeof getTranslations<'apply'>>>) {
+  switch (step) {
+    case 'capacity':
+      return t('capacityLead')
+    case 'power-of-attorney':
+      return t('poaLead')
+    case 'entity':
+      return t('entityLead')
+    case 'category':
+      return t('categoryLead')
+    case 'contracts':
+      return t('contractsLead')
+    case 'documents':
+      return t('documentsLead')
+    case 'declarations':
+      return t('declarationsLead')
+    case 'review':
+      return t('reviewLead')
   }
 }
 
@@ -341,9 +368,11 @@ async function renderStep({
             label: locale === 'ar' ? item.payload.labelAr : item.payload.labelEn,
             // The rule set carries an English description only. Rather than
             // print English prose on an Arabic screen, the Arabic reader gets
-            // the label alone until the rule set carries `descriptionAr` — a
-            // version bump, not a code change. Flagged in the Phase 1 report.
+            // the label alone here — and, since this step was rewritten, the
+            // four-part explanation under it, which is written in both
+            // languages in the message catalogue. See `DocumentHelp`.
             description: locale === 'en' ? (item.payload.descriptionEn ?? null) : null,
+            conditionNote: locale === 'en' ? (item.payload.conditionNote ?? null) : null,
             required: item.required,
             acceptedMimeTypes: item.payload.acceptedMimeTypes,
             maxSizeMb: item.payload.maxSizeMb,
