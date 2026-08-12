@@ -41,9 +41,9 @@ DRAFT → SUBMITTED → UNDER_INTAKE → UNDER_EXAMINATION → AWAITING_COMPLETI
       → CARD_ISSUED → ACTIVE
 ```
 
-**80 automated checks pass against production**, including all fourteen
-authorisation checks, and the audit chain verifies over 748 events with zero
-mismatches.
+**82 automated checks pass against production, none failing** — including all
+fourteen authorisation checks — and the audit chain verifies **810 events** with
+zero mismatches.
 
 **One blocker remains, and it is not in the application.** The Supabase Data API
 is still open on the `public` schema with row-level security off on all 34 tables
@@ -144,8 +144,7 @@ that says which moves are legal. A status is never assignable directly.
 HTTP, posting forms the way a browser with JavaScript disabled does, and checks
 the production database after every transition.
 
-**80 passed, 2 failed** on the final run *(the two failures were the `/registration`
-tie-break, now fixed — see §7)*.
+**82 passed, 0 failed** on the final run, against the deployed production build.
 
 | Area | Result |
 |---|---|
@@ -183,7 +182,7 @@ tie-break, now fixed — see §7)*.
 | Public register → does it leak the national ID? | **no** |
 | National IDs at rest | ciphertext, non-deterministic, with a keyed hash beside them |
 | Documents fetched through the audited route | 12/12, and **every byte hashes to the register's recorded SHA-256** |
-| Audit chain | **INTACT** — 735 events recomputed, zero mismatches, one genesis root |
+| Audit chain | **INTACT** — 810 events recomputed, zero mismatches, one genesis root |
 | Database refuses a DELETE on `audit_event` | yes, by trigger |
 | Secrets in the repository | none — `.env*` is gitignored; the pulled production env never left the working tree |
 
@@ -211,8 +210,8 @@ application.** Confirmed live, not inferred — see §8.
 | Segregation of duties | **no application examined and reviewed by the same person** |
 | Rule sets | 8 present, all with effective dates and items |
 
-**Register contents:** 30 users · 21 applications · 7 registrations ·
-210 documents · 748 audit events · 35 parties · 14 firms.
+**Register contents:** 30 users · 24 applications · 9 registrations ·
+230 documents · 810 audit events · 35 parties · 14 firms.
 
 **Persistence verified by behaviour, not assumption:** a step saved, the browser
 reloaded, and the values were still there; signing out and back in did not lose

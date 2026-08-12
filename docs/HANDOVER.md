@@ -252,7 +252,7 @@ it. Each row records actor, role, from-state, to-state, reason, timestamp, IP,
 user agent, and the rule-set versions in force. **`accessType` distinguishes
 `READ` from `WRITE` — reads are audited too.**
 
-Verified independently: `npx tsx scripts/verify-chain.ts` recomputed **735
+Verified independently: `npx tsx scripts/verify-chain.ts` recomputed **810
 events, zero mismatches, one genesis root**.
 
 ### Files
@@ -272,7 +272,7 @@ recorded.
 `application_event` · `declaration` · `examination_record` ·
 `application_entity_data` · `rule_set` / `rule_item`
 
-*(By row count today: `audit_event` 748, `declaration` 315,
+*(By row count today: `audit_event` 810, `declaration` 315,
 `examination_field_check` 240, `document` 210, `session` 195,
 `application_event` 111, `rule_item` 72, `fee_line` 35, `party` 35, `user` 30.)*
 
@@ -293,9 +293,9 @@ The application has **never** used the anon key for data access.
 
 | | |
 |---|---|
-| **End-to-end workflow** | **80 checks passed** against production — `node scripts/qa/workflow.mjs` |
+| **End-to-end workflow** | **82 checks passed, 0 failed** against production — `node scripts/qa/workflow.mjs` |
 | **Database integrity** | **29 passed, 0 failed** — `node scripts/qa/database.mjs` |
-| **Audit chain** | **INTACT** — 735 events recomputed, zero mismatches |
+| **Audit chain** | **INTACT** — 810 events recomputed, zero mismatches |
 | **Authorisation** | **14 of 14** — role isolation, IDOR, anonymous access, admin exclusion |
 | **Document storage** | 12/12 fetched and byte-for-byte hash-matched |
 | **Arabic and English** | Both walked end to end |
