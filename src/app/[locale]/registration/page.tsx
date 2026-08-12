@@ -57,7 +57,16 @@ export default async function RegistrationPage({
   const registration = session.brokerEntityId
     ? await db.registration.findFirst({
         where: { brokerEntityId: session.brokerEntityId, archivedAt: null },
-        orderBy: { validFrom: 'desc' },
+        // Two keys, and the second is not decoration. A firm holding two
+        // registrations that start on the same date — which happens whenever an
+        // examiner proposes the same validity period twice — made this an
+        // unordered pick between them, and the screen showed whichever row the
+        // database happened to return. A registrant seeing an arbitrary one of
+        // their own two registration numbers is worse than seeing neither.
+        //
+        // Whether a firm should be able to hold two at once is a question for
+        // the Authority, not for this file; it is raised in the QA report.
+        orderBy: [{ validFrom: 'desc' }, { createdAt: 'desc' }],
         include: { cardIssuance: { select: { documentId: true, deliveredAt: true } } },
       })
     : null
