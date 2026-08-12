@@ -117,14 +117,21 @@ export function ActionForm({
   const onSuccessRef = React.useRef(onSuccess)
   onSuccessRef.current = onSuccess
 
-  /** Snapshot on the way out, so a refusal has something to put back. */
-  const run = React.useCallback(
-    (formData: FormData) => {
-      submitted.current = formData
-      formAction(formData)
-    },
-    [formAction],
-  )
+  /**
+   * Snapshot on the way out, so a refusal has something to put back.
+   *
+   * In `onSubmit` rather than by wrapping the action, and the difference is not
+   * stylistic. `formAction` from `useActionState` is a serialisable reference
+   * to the Server Action, and React renders the hidden `$ACTION_*` inputs from
+   * it that make the form work with no JavaScript at all. Wrapping it in a
+   * client closure — which is what the first attempt at this did — leaves React
+   * nothing to serialise: the hidden inputs disappear and every form in the
+   * product silently becomes JavaScript-only. `onSubmit` runs first, does not
+   * cancel the submission, and leaves the action reference untouched.
+   */
+  const snapshot = React.useCallback((event: React.FormEvent<HTMLFormElement>) => {
+    submitted.current = new FormData(event.currentTarget)
+  }, [])
 
   React.useEffect(() => {
     if (!state) return
@@ -159,7 +166,13 @@ export function ActionForm({
 
   return (
     <ActionFormContext.Provider value={{ errors, pending: busy, inForm: true }}>
-      <form ref={formRef} action={run} className={cn('space-y-6', className)} noValidate>
+      <form
+        ref={formRef}
+        action={formAction}
+        onSubmit={snapshot}
+        className={cn('space-y-6', className)}
+        noValidate
+      >
         <input type="hidden" name="applicationId" value={applicationId} />
 
         <div ref={noticeRef}>
