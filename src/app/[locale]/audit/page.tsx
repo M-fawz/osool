@@ -20,27 +20,48 @@ import {
 } from '@/components/ui/primitives'
 import { ScrollText } from '@/components/ui/icon'
 import { RefNumber, Stamp, TruncatedName } from '@/components/ui/bidi'
-
-/** How many rows this screen shows. Stated in the copy, not implied. */
-const PAGE_SIZE = 100
+import { Pagination } from '@/components/ui/pagination'
+import { pageInfo, readPage } from '@/lib/pagination'
 
 /**
  * The audit trail.
  *
- * Two things are worth noticing about this page.
+ * Three things are worth noticing about this page.
  *
- * First, it verifies the hash chain on every load and shows the result at the
- * top. A chain nobody checks is a chain that has not been checked. The result
- * is the most consequential fact on the screen, so it is a stated finding with
- * its own heading rather than a pill tucked beside the title — an auditor
- * should be able to answer "is the trail sound?" without reading a row.
+ * First, it verifies the hash chain and shows the result at the top. A chain
+ * nobody checks is a chain that has not been checked. The result is the most
+ * consequential fact on the screen, so it is a stated finding with its own
+ * heading rather than a pill tucked beside the title — an auditor should be
+ * able to answer "is the trail sound?" without reading a row.
  *
- * Second, viewing the audit trail is itself audited — REQ-DPA-002 — so the
- * trail contains a record of who read it. That is not circular: it is the
- * point. Who examined the evidence is evidence.
+ * Second — and this is the change — it verifies *the window it is showing*, not
+ * the entire trail. The page used to call `verifyChain()` with no bounds on
+ * every single load, so opening it re-hashed every event ever recorded. Since
+ * this product audits reads as well as writes, the trail grows with use, and
+ * the cost of looking at the last fifty events grew with the total number of
+ * events in the register. That is a screen that gets slower every day it is
+ * used and eventually cannot be opened at all.
+ *
+ * A window is anchored to its predecessor's real hash, so verifying it proves
+ * those rows are unaltered and correctly linked. What it cannot prove is that
+ * nothing was removed from a stretch it did not read — so the notice says which
+ * of the two was done, in words, rather than implying the stronger claim. The
+ * full sweep runs from the command line (`npm run audit:verify`) and on a
+ * schedule.
+ *
+ * Third, viewing the audit trail is itself audited — REQ-DPA-002 — so the trail
+ * contains a record of who read it. That is not circular: it is the point. Who
+ * examined the evidence is evidence.
  */
-export default async function AuditPage({ params }: { params: Promise<{ locale: string }> }) {
+export default async function AuditPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ locale: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   const { locale } = await params
+  const query = await searchParams
   setRequestLocale(locale)
 
   const gate = await guard(['AUDITOR', 'ANALYST', 'AML_SUPERVISOR', 'REVIEWER'], { caseData: true })
@@ -50,11 +71,31 @@ export default async function AuditPage({ params }: { params: Promise<{ locale: 
   const t = await getTranslations('audit')
   const loc = locale as Locale
 
-  const [chain, events, total] = await Promise.all([
-    verifyChain(),
-    db.auditEvent.findMany({ orderBy: { seq: 'desc' }, take: PAGE_SIZE }),
+  const request = readPage(query)
+
+  const [events, total] = await Promise.all([
+    db.auditEvent.findMany({
+      orderBy: { seq: 'desc' },
+      skip: request.skip,
+      take: request.take,
+    }),
     db.auditEvent.count(),
   ])
+
+  const info = pageInfo(request, total, events.length)
+
+  /*
+   * The rows are listed newest first, so the window's bounds are the last row's
+   * seq and the first row's seq. Verification always walks forwards, whichever
+   * way the table is sorted.
+   */
+  const lowest = events.length > 0 ? events[events.length - 1]!.seq : null
+  const highest = events.length > 0 ? events[0]!.seq : null
+
+  const chain =
+    lowest !== null && highest !== null
+      ? await verifyChain({ fromSeq: lowest, toSeq: highest })
+      : await verifyChain()
 
   await recordAuditEvent({
     accessType: 'READ',
@@ -88,15 +129,22 @@ export default async function AuditPage({ params }: { params: Promise<{ locale: 
         title={t('chainHeading')}
         className="mb-6"
       >
-        {chain.ok
-          ? t('chainIntactLead', { count: chain.eventsChecked })
-          : t('chainBrokenLead')}
+        {chain.ok ? t('chainIntactLead', { count: chain.eventsChecked }) : t('chainBrokenLead')}
+        {/* Says which check was run. An auditor reading "intact" needs to know
+            whether that covers fifty events or all of them, and the difference
+            is the difference between "these rows are unaltered" and "nothing
+            has been removed from the register". */}
+        {chain.ok ? (
+          <span className="mt-1.5 block text-xs text-ink-muted">
+            {chain.scope === 'WINDOW' ? t('chainScopeWindow') : t('chainScopeFull')}
+          </span>
+        ) : null}
       </Notice>
 
       <Panel flush>
         <Toolbar>
           <p className="text-xs text-ink-muted">
-            {t('countLabel', { shown: Math.min(events.length, PAGE_SIZE), total })}
+            {t('countLabel', { shown: events.length, total })}
           </p>
         </Toolbar>
 
@@ -205,6 +253,25 @@ export default async function AuditPage({ params }: { params: Promise<{ locale: 
             )}
           </tbody>
         </Table>
+
+        <Pagination
+          info={info}
+          basePath="/audit"
+          searchParams={query}
+          locale={loc}
+          labels={{
+            showing: t('showing', {
+              first: info.firstRow,
+              last: info.lastRow,
+              total: info.total,
+            }),
+            previous: t('previousPage'),
+            next: t('nextPage'),
+            page: t('pagination'),
+            perPage: t('perPage'),
+            empty: t('emptyTitle'),
+          }}
+        />
       </Panel>
     </Shell>
   )

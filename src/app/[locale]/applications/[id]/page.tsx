@@ -15,6 +15,8 @@ import { Ltr, Stamp } from '@/components/ui/bidi'
 import { CaseHeader } from '@/components/gov/case-header'
 import { CaseSummary } from '@/components/gov/case-summary'
 import { EventTrail } from '@/components/gov/event-trail'
+import { ReturnedItems } from '@/components/application/returned-items'
+import { loadReturnHistory } from '@/lib/applications/returns'
 import { ArchiveForm, DataExtractionForm } from '@/components/gov/file-handling-forms'
 import { AssignExaminerForm, IntakeForm } from '@/components/gov/issuance-forms'
 
@@ -182,6 +184,16 @@ export default async function CaseFilePage({
 
           <CaseSummary application={application} locale={loc} />
         </div>
+
+        {/* What was sent back, and how often. An officer picking up a file
+            needs to know it has been returned twice before they read a word of
+            it — that is the shape 00-VISION §5 signal 15 is about. */}
+        <ReturnedItems
+          history={await loadReturnHistory(id)}
+          applicationId={id}
+          locale={loc}
+          variant="officer"
+        />
 
         <EventTrail applicationId={id} locale={loc} />
       </div>

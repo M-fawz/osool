@@ -401,6 +401,62 @@ function DocumentPane({ line }: { line: ReviewLine | null }) {
 }
 
 /**
+ * The categories an item can belong to, in the order the applicant's screen
+ * shows them. Documents first, because most items are documents.
+ */
+const COMPLETION_CATEGORIES = [
+  'DOCUMENT',
+  'APPLICATION_DATA',
+  'CONTRACT',
+  'DECLARATION',
+  'OTHER',
+] as const
+
+interface CompletionDraft {
+  checklistItemKey: string
+  category: (typeof COMPLETION_CATEGORIES)[number]
+  descriptionAr: string
+  descriptionEn: string
+  requiredCorrectionAr: string
+  legalReference: string
+}
+
+const EMPTY_DRAFT: CompletionDraft = {
+  checklistItemKey: '',
+  category: 'DOCUMENT',
+  descriptionAr: '',
+  descriptionEn: '',
+  requiredCorrectionAr: '',
+  legalReference: '',
+}
+
+/**
+ * The label for a category.
+ *
+ * Written as a lookup rather than an interpolated message key, because
+ * next-intl's types resolve a template key to a union it cannot narrow, and
+ * casting one back to a literal at each call site is the kind of noise that
+ * hides a genuinely missing translation.
+ */
+function categoryLabel(
+  t: ReturnType<typeof useTranslations<'gov'>>,
+  category: CompletionDraft['category'],
+): string {
+  switch (category) {
+    case 'DOCUMENT':
+      return t('completionCategoryDocument')
+    case 'APPLICATION_DATA':
+      return t('completionCategoryData')
+    case 'CONTRACT':
+      return t('completionCategoryContract')
+    case 'DECLARATION':
+      return t('completionCategoryDeclaration')
+    case 'OTHER':
+      return t('completionCategoryOther')
+  }
+}
+
+/**
  * Composing الاستيفاءات.
  *
  * §5: "AWAITING_COMPLETION requires at least one structured completion item —
@@ -411,6 +467,20 @@ function DocumentPane({ line }: { line: ReviewLine | null }) {
  * it cites. That field is *not* mandatory: an item with no basis in the
  * checklist is exactly what 00-VISION §5's sixteenth signal counts, and a field
  * that cannot be left blank can never produce that count.
+ *
+ * ── Two fields that change the applicant's experience entirely ───────────
+ *
+ * **Category.** Which part of the file the item is about. It costs the examiner
+ * one dropdown, and it is what lets the applicant's screen group seven items
+ * into "three documents and two data fields" rather than a flat list they have
+ * to sort themselves.
+ *
+ * **What is needed.** A separate sentence from what is wrong, in a separate
+ * box, so that writing only one of the two looks like an omission rather than a
+ * complete answer. On the paper form these are one column, which is why the
+ * same item so often comes back twice: "the commercial register is illegible"
+ * does not tell an applicant whether to rescan it, obtain a certified copy, or
+ * renew it.
  */
 function CompletionsComposer({
   applicationId,
@@ -421,15 +491,8 @@ function CompletionsComposer({
 }) {
   const t = useTranslations('gov')
   const tCommon = useTranslations('common')
-  const [items, setItems] = React.useState<
-    Array<{ checklistItemKey: string; descriptionAr: string; descriptionEn: string }>
-  >([])
-
-  const [draft, setDraft] = React.useState({
-    checklistItemKey: '',
-    descriptionAr: '',
-    descriptionEn: '',
-  })
+  const [items, setItems] = React.useState<CompletionDraft[]>([])
+  const [draft, setDraft] = React.useState<CompletionDraft>(EMPTY_DRAFT)
 
   return (
     <Panel title={t('completionsTitle')} description={t('completionsLead')}>
@@ -442,11 +505,20 @@ function CompletionsComposer({
               </span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm text-ink">{item.descriptionAr}</p>
+                {item.requiredCorrectionAr ? (
+                  <p className="mt-0.5 text-xs text-ink-muted">
+                    <span className="font-semibold">{t('completionRequiredShort')}:</span>{' '}
+                    {item.requiredCorrectionAr}
+                  </p>
+                ) : null}
                 <p className="mt-0.5 text-2xs text-ink-faint">
+                  {categoryLabel(t, item.category)}
+                  {' \u00b7 '}
                   {item.checklistItemKey
                     ? (choices.find((c) => c.key === item.checklistItemKey)?.label ??
                       item.checklistItemKey)
                     : t('completionChecklistNone')}
+                  {item.legalReference ? ' \u00b7 ' + item.legalReference : ''}
                 </p>
               </div>
               <button
@@ -463,6 +535,25 @@ function CompletionsComposer({
       ) : null}
 
       <div className="space-y-3 border border-rule p-3">
+        {/* Category first. It decides where the item lands on the applicant's
+            screen, and choosing it first frames what the examiner writes next. */}
+        <Field label={t('completionCategoryLabel')} htmlFor="completion-category" required>
+          <Select
+            id="completion-category"
+            value={draft.category}
+            onChange={(event) => {
+              const value = event.currentTarget.value as CompletionDraft['category']
+              setDraft((current) => ({ ...current, category: value }))
+            }}
+          >
+            {COMPLETION_CATEGORIES.map((value) => (
+              <option key={value} value={value}>
+                {categoryLabel(t, value)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
         <Field label={t('completionChecklistItem')} htmlFor="completion-item">
           <Select
             id="completion-item"
@@ -511,13 +602,51 @@ function CompletionsComposer({
           />
         </Field>
 
+        {/* What would make it right. Its own box, deliberately: an examiner who
+            has written the problem and left this empty can see at a glance that
+            they have answered half the question. */}
+        <Field
+          label={t('completionRequiredAr')}
+          htmlFor="completion-required-ar"
+          hint={t('completionRequiredHint')}
+        >
+          <Textarea
+            id="completion-required-ar"
+            rows={2}
+            value={draft.requiredCorrectionAr}
+            onChange={(event) => {
+              const value = event.currentTarget.value
+              setDraft((current) => ({ ...current, requiredCorrectionAr: value }))
+            }}
+            lang="ar"
+            dir="rtl"
+          />
+        </Field>
+
+        <Field
+          label={t('completionLegalReference')}
+          htmlFor="completion-basis"
+          hint={t('completionLegalReferenceHint')}
+        >
+          <Input
+            id="completion-basis"
+            value={draft.legalReference}
+            onChange={(event) => {
+              const value = event.currentTarget.value
+              setDraft((current) => ({ ...current, legalReference: value }))
+            }}
+            dir="ltr"
+            placeholder="REQ-REG-030"
+          />
+        </Field>
+
         <Button
           type="button"
           variant="secondary"
           disabled={draft.descriptionAr.trim().length === 0}
           onClick={() => {
             setItems((current) => [...current, { ...draft }])
-            setDraft({ checklistItemKey: '', descriptionAr: '', descriptionEn: '' })
+            setDraft(EMPTY_DRAFT)
           }}
         >
           {t('completionAdd')}
@@ -543,8 +672,11 @@ function CompletionsComposer({
               value={JSON.stringify(
                 items.map((item) => ({
                   checklistItemKey: item.checklistItemKey || undefined,
+                  category: item.category,
                   descriptionAr: item.descriptionAr,
                   descriptionEn: item.descriptionEn || undefined,
+                  requiredCorrectionAr: item.requiredCorrectionAr || undefined,
+                  legalReference: item.legalReference || undefined,
                 })),
               )}
             />

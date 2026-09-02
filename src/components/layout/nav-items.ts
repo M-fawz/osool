@@ -1,6 +1,14 @@
 import type { Role } from '@prisma/client'
 import { canProvisionAccounts, canSeeCaseData } from '@/lib/auth/roles'
-import { ArchiveX, ClipboardList, LayoutGrid, ScrollText, ShieldCheck, Users } from '@/components/ui/icon'
+import {
+  ArchiveX,
+  ClipboardList,
+  FileSearch,
+  LayoutGrid,
+  ScrollText,
+  ShieldCheck,
+  Users,
+} from '@/components/ui/icon'
 import type { LucideIcon } from '@/components/ui/icon'
 
 /**
@@ -22,7 +30,16 @@ import type { LucideIcon } from '@/components/ui/icon'
  * server/client boundary and a React component is not serialisable.
  */
 
-export type NavIconKey = 'dashboard' | 'audit' | 'accounts' | 'queue' | 'card' | 'archive'
+export type NavIconKey =
+  | 'dashboard'
+  | 'audit'
+  | 'accounts'
+  | 'queue'
+  | 'card'
+  | 'archive'
+  | 'register'
+  | 'signals'
+  | 'appointments'
 
 export const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   dashboard: LayoutGrid,
@@ -31,6 +48,9 @@ export const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   queue: ClipboardList,
   card: ShieldCheck,
   archive: ArchiveX,
+  register: FileSearch,
+  signals: ShieldCheck,
+  appointments: ClipboardList,
 }
 
 export interface NavItem {
@@ -63,6 +83,12 @@ const WORKFLOW_QUEUES: Partial<Record<Role, { href: string; labelKey: string; ic
   FILES_HEAD: { href: '/archive', labelKey: 'archive', icon: 'archive' },
 }
 
+/** The posts that stand at a counter, and the one that plans it. */
+const COUNTER_ROLES: Role[] = ['REGISTRY_CLERK', 'CARD_ISSUER', 'DATA_MANAGER', 'AUDITOR']
+
+/** §4's supervisory functions. Signals are triaged here and nowhere else. */
+const SUPERVISORY_ROLES: Role[] = ['AML_SUPERVISOR', 'AUDITOR', 'ANALYST']
+
 export function navSectionsFor(role: Role): NavSection[] {
   const sections: NavSection[] = [
     {
@@ -76,11 +102,44 @@ export function navSectionsFor(role: Role): NavSection[] {
     sections.push({ headingKey: 'sectionWorkflow', items: [queue] })
   }
 
+  /*
+   * The register itself.
+   *
+   * Every role that may see case data may look the register up: an examiner
+   * checking whether an applicant already holds a registration, a card issuer
+   * confirming a number, an inspector finding a firm. It sits in its own
+   * section above supervision because it is a reference, not a worklist.
+   */
   if (canSeeCaseData(role)) {
     sections.push({
-      headingKey: 'sectionSupervision',
-      items: [{ href: '/audit', labelKey: 'auditTrail', icon: 'audit' }],
+      headingKey: 'sectionRegister',
+      items: [{ href: '/register', labelKey: 'register', icon: 'register' }],
     })
+  }
+
+  /*
+   * The counter's diary, for the two posts that stand at it and the data
+   * manager who plans it. An examiner has no counter, so no entry.
+   */
+  if (COUNTER_ROLES.includes(role)) {
+    sections.push({
+      headingKey: 'sectionCounter',
+      items: [{ href: '/appointments', labelKey: 'appointments', icon: 'appointments' }],
+    })
+  }
+
+  if (canSeeCaseData(role)) {
+    const supervision: NavItem[] = []
+
+    // §4 gives the supervisory function to these three and no others. An
+    // examiner does not triage signals about examiners.
+    if (SUPERVISORY_ROLES.includes(role)) {
+      supervision.push({ href: '/supervision', labelKey: 'signals', icon: 'signals' })
+    }
+
+    supervision.push({ href: '/audit', labelKey: 'auditTrail', icon: 'audit' })
+
+    sections.push({ headingKey: 'sectionSupervision', items: supervision })
   }
 
   if (canProvisionAccounts(role)) {

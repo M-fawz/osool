@@ -1,6 +1,7 @@
 import Image from 'next/image'
 import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
+import { LocaleSwitch } from './locale-switch'
 import type { Locale } from '@/i18n/routing'
 import { isGovernmentRole, personName, roleLabel } from '@/lib/auth/roles'
 import type { Session } from '@/lib/auth/session'
@@ -92,18 +93,11 @@ export async function Shell({
           </Link>
 
           <div className="ms-auto flex items-center gap-2">
-            <Link
-              href="/dashboard"
-              locale={otherLocale}
-              lang={otherLocale}
-              // `lang` on the link matters: it is the one control on the page
-              // whose text is deliberately in the *other* language, and
-              // without it a screen reader pronounces "English" with Arabic
-              // phonemes.
+            <LocaleSwitch
+              otherLocale={otherLocale}
+              label={t('switchToEnglish')}
               className="on-chrome flex min-h-9 items-center rounded-xs border border-chrome-rule px-2.5 text-xs text-chrome-muted hover:bg-chrome-hover hover:text-chrome-text"
-            >
-              {t('switchToEnglish')}
-            </Link>
+            />
             <AccountMenu
               identity={{
                 name: who.primary,

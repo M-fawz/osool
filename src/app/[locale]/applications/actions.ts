@@ -169,8 +169,13 @@ export async function requestCompletionsAction(
       applicationId,
       items: parsed.data.items.map((item) => ({
         checklistItemKey: item.checklistItemKey,
+        category: item.category,
+        fieldKey: item.fieldKey,
         descriptionAr: item.descriptionAr,
         descriptionEn: item.descriptionEn,
+        requiredCorrectionAr: item.requiredCorrectionAr,
+        requiredCorrectionEn: item.requiredCorrectionEn,
+        legalReference: item.legalReference,
       })),
     }),
     '/examination',

@@ -30,6 +30,8 @@ import { ContractsStep } from '@/components/application/contracts-step'
 import { DocumentsStep } from '@/components/application/documents-step'
 import { DeclarationsStep } from '@/components/application/declarations-step'
 import { ReviewStep } from '@/components/application/review-step'
+import { ReturnedItems } from '@/components/application/returned-items'
+import { loadReturnHistory } from '@/lib/applications/returns'
 
 /**
  * One route for all eight steps.
@@ -128,6 +130,22 @@ export default async function ApplicationStepPage({
         <Notice tone="informational" className="mb-6">
           {tApply('submittedLead')}
         </Notice>
+      ) : null}
+
+      {/*
+        What the Authority sent back, on every step of a returned file.
+        Deliberately not only on the review screen: an applicant fixing three
+        documents is standing on the documents step, and making them navigate
+        away to re-read what was asked for is how an item gets half-fixed.
+      */}
+      {application.status === 'AWAITING_COMPLETION' ? (
+        <div className="mb-6">
+          <ReturnedItems
+            history={await loadReturnHistory(application.id)}
+            applicationId={application.id}
+            locale={loc}
+          />
+        </div>
       ) : null}
 
       {await renderStep({

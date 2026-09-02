@@ -70,9 +70,9 @@ export default async function ApplicationsPage({
       })
     : null
 
-  const applications = session.brokerEntityId
+  const { rows: applications } = session.brokerEntityId
     ? await loadBrokerApplications(session.brokerEntityId)
-    : []
+    : { rows: [] }
 
   // Progress is only meaningful while a file is still the applicant's to
   // finish, so it is computed for drafts and for files awaiting completions —

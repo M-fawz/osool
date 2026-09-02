@@ -1,6 +1,7 @@
 import Image from 'next/image'
 import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
+import { LocaleSwitch } from './locale-switch'
 import type { Locale } from '@/i18n/routing'
 import { isGovernmentRole, personName, roleLabel } from '@/lib/auth/roles'
 import type { Session } from '@/lib/auth/session'
@@ -76,14 +77,11 @@ export async function PortalShell({
           </Link>
 
           <div className="ms-auto flex items-center gap-2">
-            <Link
-              href="/application"
-              locale={otherLocale}
-              lang={otherLocale}
+            <LocaleSwitch
+              otherLocale={otherLocale}
+              label={t('switchToEnglish')}
               className="on-chrome flex min-h-11 items-center rounded-xs border border-chrome-rule px-3 text-sm text-chrome-muted hover:bg-chrome-hover hover:text-chrome-text"
-            >
-              {t('switchToEnglish')}
-            </Link>
+            />
             <AccountMenu
               identity={{
                 name: who.primary,
