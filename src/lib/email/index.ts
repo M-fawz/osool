@@ -24,6 +24,13 @@ import { env } from '@/lib/env'
  *                 activation URL, to the server console where the developer is
  *                 already looking. It is a *delivery* mechanism for one
  *                 developer on one machine, not a queue someone administers.
+ *   · `capture`  — the automated tests. Holds messages in memory so a test can
+ *                 assert that the right person was told the right thing. Never
+ *                 touches disk or database, and is refused in production.
+ *
+ * `manual` is refused in production too, and src/lib/env.ts explains why at
+ * length: it cannot deliver to a self-registering broker, because there is no
+ * administrator in that loop to hand the link to.
  *
  * A send that fails throws. A caller provisioning an account must not report
  * success when the employee will never receive the link.
@@ -37,9 +44,33 @@ export interface EmailMessage {
 }
 
 export interface EmailResult {
-  driver: 'console' | 'resend' | 'manual'
+  driver: 'console' | 'resend' | 'manual' | 'capture'
   id: string | null
   to: string
+}
+
+/**
+ * Messages the `capture` driver has taken, newest last.
+ *
+ * Module state, deliberately: a test asserts against the same process that sent
+ * the message. It is bounded so a long run cannot grow it without limit, and
+ * `capture` never runs anywhere but a test — env.ts refuses it in production.
+ */
+const captured: EmailMessage[] = []
+const CAPTURE_LIMIT = 500
+
+export function capturedEmails(): readonly EmailMessage[] {
+  return captured
+}
+
+export function clearCapturedEmails(): void {
+  captured.length = 0
+}
+
+async function sendViaCapture(message: EmailMessage): Promise<EmailResult> {
+  captured.push(message)
+  if (captured.length > CAPTURE_LIMIT) captured.shift()
+  return { driver: 'capture', id: `capture-${captured.length}`, to: message.to }
 }
 
 async function sendViaConsole(message: EmailMessage): Promise<EmailResult> {
@@ -91,5 +122,6 @@ async function sendViaManual(message: EmailMessage): Promise<EmailResult> {
 export async function sendEmail(message: EmailMessage): Promise<EmailResult> {
   if (env.EMAIL_PROVIDER === 'resend') return sendViaResend(message)
   if (env.EMAIL_PROVIDER === 'manual') return sendViaManual(message)
+  if (env.EMAIL_PROVIDER === 'capture') return sendViaCapture(message)
   return sendViaConsole(message)
 }
