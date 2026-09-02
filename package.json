@@ -14,7 +14,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "ci": "npm run typecheck && npm run lint && npm run audit:no-deletes && npm run build",
+    "ci": "npm run typecheck && npm run lint && npm run audit:no-deletes && npm run i18n:check && npm run test:unit && npm run build",
     "setup": "node scripts/setup.mjs",
     "db:start": "node scripts/db.mjs start",
     "db:stop": "node scripts/db.mjs stop",
@@ -37,7 +37,13 @@
     "qa:routes": "node scripts/qa/routes.mjs",
     "qa:database": "node scripts/qa/database.mjs",
     "qa:admin": "node scripts/qa/administration.mjs",
-    "qa:lifecycle": "node scripts/qa/account-lifecycle.mjs"
+    "qa:lifecycle": "node scripts/qa/account-lifecycle.mjs",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:watch": "vitest",
+    "sweep": "tsx scripts/sweep.ts",
+    "i18n:check": "node scripts/i18n-keys.mjs check"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -71,6 +77,7 @@
     "@types/node": "^22.10.7",
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
+    "@vitest/coverage-v8": "^3.2.7",
     "embedded-postgres": "^18.4.0-beta.17",
     "eslint": "^9.39.5",
     "eslint-config-next": "^15.5.22",
@@ -79,6 +86,7 @@
     "prisma": "^6.2.1",
     "tailwindcss": "^4.0.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.7"
   }
 }
