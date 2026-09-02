@@ -11,6 +11,18 @@ const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts')
  */
 const onVercel = Boolean(process.env.VERCEL)
 
+/*
+ * Whether this build is `next dev`.
+ *
+ * Read here rather than at request time because `headers()` runs once, at
+ * build/start. `next dev` sets NODE_ENV=development; every build — including
+ * the one a developer runs locally before `npm start` — sets production. That
+ * is exactly the asymmetry the HSTS note below warns about, and it works in
+ * our favour here: the looser development CSP can never be baked into a
+ * production build.
+ */
+const isDevelopment = process.env.NODE_ENV === 'development'
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
 
@@ -111,6 +123,72 @@ const nextConfig: NextConfig = {
                 },
               ]
             : []),
+
+          /*
+           * Content Security Policy.
+           *
+           * The one header that turns a cross-site scripting bug from a total
+           * compromise into a broken image. Everything above narrows what the
+           * browser *may* do with this page; this narrows where its content may
+           * come from at all, which is the control that still holds when
+           * something else has already gone wrong.
+           *
+           * ── Why the policy looks like this ────────────────────────────
+           *
+           * `default-src 'self'` and then exceptions, rather than a permissive
+           * base with restrictions bolted on. A register serves its own fonts,
+           * its own scripts, and its own documents; there is no CDN, no
+           * analytics, and no embedded third party anywhere in the product, so
+           * the strict base costs nothing and every exception below had to
+           * earn its place.
+           *
+           *   · `'unsafe-inline'` on style-src — Next.js and Tailwind emit
+           *     inline styles for streamed segments and there is no nonce path
+           *     for them in the App Router today. It is the one concession, and
+           *     it is on styles rather than scripts, which is the difference
+           *     between a defacement and a takeover.
+           *
+           *   · `'unsafe-inline'` on script-src in development only. `next dev`
+           *     injects inline bootstrapping and the React refresh runtime; the
+           *     production bundle does not, and the production policy does not
+           *     allow it. Keying this on NODE_ENV is safe here in a way it was
+           *     not for HSTS above: getting it wrong makes development
+           *     inconvenient, not a browser profile permanently wrong.
+           *
+           *   · `img-src` admits `data:` and `blob:` because the upload screens
+           *     preview a chosen scan before it is sent, and a phone camera
+           *     capture arrives as a blob URL.
+           *
+           *   · `frame-ancestors 'none'` restates X-Frame-Options in the modern
+           *     form. Both are sent: the old header is what some corporate
+           *     proxies still enforce, and clickjacking a government approval
+           *     button is exactly the attack it prevents.
+           *
+           *   · `form-action 'self'` stops an injected form posting a session
+           *     somewhere else, and `base-uri 'none'` stops an injected <base>
+           *     silently repointing every relative URL on the page.
+           *
+           * `object-src 'none'` because this product embeds no plugin content;
+           * the registration card is served as a download, not an <object>.
+           */
+          {
+            key: 'Content-Security-Policy',
+            value: [
+              "default-src 'self'",
+              isDevelopment
+                ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+                : "script-src 'self'",
+              "style-src 'self' 'unsafe-inline'",
+              "img-src 'self' data: blob:",
+              "font-src 'self' data:",
+              "connect-src 'self'",
+              "object-src 'none'",
+              "frame-ancestors 'none'",
+              "form-action 'self'",
+              "base-uri 'none'",
+              'upgrade-insecure-requests',
+            ].join('; '),
+          },
         ],
       },
     ]
