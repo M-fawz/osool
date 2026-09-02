@@ -16,6 +16,8 @@ import { Status, type StatusTone } from '@/components/ui/status'
 import { Ltr, Stamp } from '@/components/ui/bidi'
 import { ClipboardList, Icon, forwardChevron } from '@/components/ui/icon'
 import { StartApplicationButton } from '@/components/application/start-application-button'
+import { Pagination } from '@/components/ui/pagination'
+import { pageInfo, readPage } from '@/lib/pagination'
 import type { ApplicationStatus } from '@prisma/client'
 
 /**
@@ -50,10 +52,13 @@ const TONES: Record<ApplicationStatus, StatusTone> = {
 
 export default async function ApplicationsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const { locale } = await params
+  const query = await searchParams
   setRequestLocale(locale)
 
   const gate = await guard(BROKER_ROLES, { caseData: true })
@@ -70,9 +75,23 @@ export default async function ApplicationsPage({
       })
     : null
 
-  const { rows: applications } = session.brokerEntityId
-    ? await loadBrokerApplications(session.brokerEntityId)
-    : { rows: [] }
+  /*
+   * Paged, and the page actually asked for.
+   *
+   * `loadBrokerApplications` takes a page and defaults to the first one, so
+   * calling it without arguments compiled, ran, and silently capped the list at
+   * fifty rows with no way to reach the fifty-first. That is worse than the
+   * unpaged version it replaced: before, a large brokerage saw everything
+   * slowly; after, it saw the newest fifty and had no indication the rest
+   * existed. The fix is not in the query — that was already right — it is
+   * reading the page the applicant asked for and rendering the control that
+   * lets them ask.
+   */
+  const request = readPage(query)
+  const { rows: applications, total } = session.brokerEntityId
+    ? await loadBrokerApplications(session.brokerEntityId, request)
+    : { rows: [], total: 0 }
+  const info = pageInfo(request, total, applications.length)
 
   // Progress is only meaningful while a file is still the applicant's to
   // finish, so it is computed for drafts and for files awaiting completions —
@@ -195,6 +214,25 @@ export default async function ApplicationsPage({
               </Panel>
             )
           })}
+
+          <Pagination
+            info={info}
+            basePath="/application"
+            searchParams={query}
+            locale={loc}
+            labels={{
+              showing: t('showing', {
+                first: info.firstRow,
+                last: info.lastRow,
+                total: info.total,
+              }),
+              previous: t('previousPage'),
+              next: t('nextPage'),
+              page: t('pagination'),
+              perPage: t('perPage'),
+              empty: t('emptyTitle'),
+            }}
+          />
 
           <div className="pt-2">
             <StartApplicationButton label={t('startNew')} />

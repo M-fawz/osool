@@ -310,7 +310,12 @@
       "CARD_ISSUED": "The card has been issued and is waiting to be handed over. Your permanent registration number appears on the \"My registration\" page once it has been.",
       "ACTIVE": "The registration is in force. The permanent registration number and the card are on the \"My registration\" page, and the number must appear on everything you issue.",
       "WITHDRAWN": "This application was withdrawn and is no longer under consideration. You may start a new one."
-    }
+    },
+    "showing": "Showing {first}–{last} of {total}",
+    "previousPage": "Previous",
+    "nextPage": "Next",
+    "pagination": "Page",
+    "perPage": "Per page"
   },
   "apply": {
     "title": "Application to register in the Real Estate Brokers Register",
