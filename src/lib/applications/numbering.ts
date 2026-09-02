@@ -1,99 +1,106 @@
 import type { Tx } from '@/lib/db'
 
 /**
- * The two numbers a file carries, and why they are not the same number.
+ * The three numbers a file carries, and why they are not one number.
  *
  * REQ-REG-050 step 1 assigns a **temporary number** the moment the papers are
  * entered in the incoming register — before anyone has read them, and whether
  * or not the application is ever granted. Step 5 issues a **permanent
- * registration number** only if it is. Collapsing the two would mean either
- * that a refused application had consumed a registration number, or that a file
- * spent its first week with nothing to call it by at the counter.
+ * registration number** only if it is. Step 6 writes a **delivery serial** in
+ * the delivery ledger, which is a separate book: it records the order cards
+ * left the counter, not the order they were granted, and the two diverge as
+ * soon as one card waits a week to be collected.
  *
- * Both are year-scoped and printed with the year first — `2026/1183` — which is
- * how they are read out over a telephone and how they are filed on paper. Both
- * are allocated under a PostgreSQL advisory lock held for the rest of the
- * caller's transaction, because two clerks accepting files at the same moment
- * must not be handed the same number, and a `MAX(n) + 1` without a lock does
- * exactly that under any real load.
+ * Collapsing any of them would mean either that a refused application had
+ * consumed a registration number, or that a file spent its first week with
+ * nothing to call it by at the counter.
+ *
+ * All three are year-scoped and printed with the year first — `2026/1183` —
+ * which is how they are read out over a telephone and how they are filed on
+ * paper.
+ *
+ * ── How they are allocated, and what changed ──────────────────────────────
+ *
+ * They used to be allocated by reading `MAX(SUBSTRING(column FROM n))` off the
+ * table being numbered, under an advisory lock held for the rest of the
+ * caller's transaction. That was wrong in two ways, and both only show up
+ * later:
+ *
+ *   1. The maximum of a *text* column is a text comparison. `'10000'` sorts
+ *      before `'9999'`, so the ten-thousandth registration of a year would have
+ *      been handed `2026/10000`… and the ten-thousand-and-first would have read
+ *      the same maximum and been handed it again. The unique index would then
+ *      refuse the write, and card issuance would fail for every applicant for
+ *      the rest of the year. Four digits is a plausible annual volume for a
+ *      national register, so this was a real ceiling and not a theoretical one.
+ *
+ *   2. Correctness depended on every caller remembering to be inside a
+ *      transaction, because the lock is a transaction lock. Nothing enforced
+ *      that. A read-then-write with the lock accidentally omitted looks
+ *      identical in the diff and is a race.
+ *
+ * Both are gone. A single `UPDATE … RETURNING` on one counter row in
+ * `number_series` is atomic by itself: concurrent allocators serialise on that
+ * row, the value returned is an integer, and it counts past 9,999 without
+ * comment. The advisory locks are no longer needed and no longer taken —
+ * removing contention that intake and issuance previously had with each other.
  */
 
-/**
- * Advisory lock keys. Distinct from the audit chain's key (8410077) and from
- * each other, so intake and issuance never wait on one another.
- */
-const TEMPORARY_NUMBER_LOCK = 8410078
-const REGISTRATION_NUMBER_LOCK = 8410079
-
+/** Zero-padding, not a ceiling. 10,000 renders as `10000` and stays correct. */
 const SEQUENCE_WIDTH = 4
 
-/**
- * The offsets are cast to `int` explicitly.
- *
- * Prisma sends a JavaScript number as `bigint`, and PostgreSQL has no
- * `substring(text, bigint)` — the query fails at run time with a function-does-
- * not-exist error rather than at compile time. The cast is the whole fix, and it
- * is easy to lose in a refactor, so it is written down here.
- */
+type Series = 'TEMPORARY' | 'REGISTRATION' | 'DELIVERY'
 
 function format(year: number, sequence: number, prefix = ''): string {
   return `${prefix}${year}/${String(sequence).padStart(SEQUENCE_WIDTH, '0')}`
 }
 
-/** `T-2026/0042` — the incoming-register number, REQ-REG-050 step 1. */
-export async function allocateTemporaryNumber(tx: Tx, now = new Date()): Promise<string> {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${TEMPORARY_NUMBER_LOCK}::bigint)`
-
-  const year = now.getUTCFullYear()
-  const prefix = `T-${year}/`
-
-  const rows = await tx.$queryRaw<Array<{ max: string | null }>>`
-    SELECT MAX(SUBSTRING("temporaryNumber" FROM ${prefix.length + 1}::int)) AS max
-    FROM "application"
-    WHERE "temporaryNumber" LIKE ${`${prefix}%`}
+/**
+ * Take the next value in a year's series.
+ *
+ * The insert-or-increment is one statement. Postgres resolves the conflict
+ * against the `(series, year)` unique index and, in the DO UPDATE branch, the
+ * second writer blocks on the row the first is holding rather than reading a
+ * stale value — which is exactly the property the old advisory lock was there
+ * to buy, obtained here from the row itself.
+ *
+ * `EXCLUDED` is not used for the value on purpose: the new value is always
+ * derived from what is already stored, so a concurrent allocator can never
+ * overwrite a higher count with a lower one.
+ */
+async function nextInSeries(tx: Tx, series: Series, year: number): Promise<number> {
+  const rows = await tx.$queryRaw<Array<{ lastValue: number }>>`
+    INSERT INTO "number_series" ("id", "series", "year", "lastValue", "createdAt", "updatedAt")
+    VALUES (${`${series.toLowerCase()}-${year}`}, ${series}, ${year}, 1, NOW(), NOW())
+    ON CONFLICT ("series", "year")
+      DO UPDATE SET "lastValue" = "number_series"."lastValue" + 1, "updatedAt" = NOW()
+    RETURNING "lastValue"
   `
 
-  const highest = Number(rows[0]?.max ?? 0)
-  return format(year, (Number.isFinite(highest) ? highest : 0) + 1, 'T-')
+  const value = rows[0]?.lastValue
+  if (value === undefined) {
+    // Unreachable: RETURNING on an upsert always yields the row. Stated anyway,
+    // because silently producing `NaN/0000` would be worse than failing.
+    throw new Error(`Could not allocate a number in the ${series} series for ${year}.`)
+  }
+
+  return value
+}
+
+/** `T-2026/0042` — the incoming-register number, REQ-REG-050 step 1. */
+export async function allocateTemporaryNumber(tx: Tx, now = new Date()): Promise<string> {
+  const year = now.getUTCFullYear()
+  return format(year, await nextInSeries(tx, 'TEMPORARY', year), 'T-')
 }
 
 /** `2026/1183` — the permanent registration number, REQ-REG-050 step 5. */
 export async function allocateRegistrationNumber(tx: Tx, now = new Date()): Promise<string> {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${REGISTRATION_NUMBER_LOCK}::bigint)`
-
   const year = now.getUTCFullYear()
-  const prefix = `${year}/`
-
-  const rows = await tx.$queryRaw<Array<{ max: string | null }>>`
-    SELECT MAX(SUBSTRING("registrationNumber" FROM ${prefix.length + 1}::int)) AS max
-    FROM "registration"
-    WHERE "registrationNumber" LIKE ${`${prefix}%`}
-  `
-
-  const highest = Number(rows[0]?.max ?? 0)
-  return format(year, (Number.isFinite(highest) ? highest : 0) + 1)
+  return format(year, await nextInSeries(tx, 'REGISTRATION', year))
 }
 
-/**
- * `D-2026/0042` — the serial in the delivery ledger, REQ-REG-050 step 6.
- *
- * A third series rather than a reuse of the registration number, because the
- * paper ledger is a separate book: it records the order cards left the counter,
- * not the order they were granted, and the two diverge as soon as one card
- * waits a week to be collected.
- */
+/** `D-2026/0042` — the serial in the delivery ledger, REQ-REG-050 step 6. */
 export async function allocateDeliverySerial(tx: Tx, now = new Date()): Promise<string> {
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${REGISTRATION_NUMBER_LOCK}::bigint)`
-
   const year = now.getUTCFullYear()
-  const prefix = `D-${year}/`
-
-  const rows = await tx.$queryRaw<Array<{ max: string | null }>>`
-    SELECT MAX(SUBSTRING("deliverySerial" FROM ${prefix.length + 1}::int)) AS max
-    FROM "card_issuance"
-    WHERE "deliverySerial" LIKE ${`${prefix}%`}
-  `
-
-  const highest = Number(rows[0]?.max ?? 0)
-  return format(year, (Number.isFinite(highest) ? highest : 0) + 1, 'D-')
+  return format(year, await nextInSeries(tx, 'DELIVERY', year), 'D-')
 }

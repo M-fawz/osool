@@ -1,4 +1,6 @@
 import { db } from '@/lib/db'
+import { notify } from '@/lib/notifications'
+import { applicationSubject } from '@/lib/notifications/subjects'
 import type { RuleViolation } from '@/lib/rules/violation'
 import { evaluateCompleteness, loadApplicationDetail } from './completeness'
 import { notYourApplication, precondition } from './refusals'
@@ -97,13 +99,18 @@ export async function submitApplication(
         // The rule-set versions this submission was judged under, frozen onto
         // the application, so a decision taken in March stays explainable after
         // October's amendment.
-        const stamped: Record<string, number> = {}
-        for (const violation of completeness.violations) {
-          if (violation.ruleSetCode && violation.ruleSetVersion !== undefined) {
-            stamped[violation.ruleSetCode] = violation.ruleSetVersion
-          }
+        //
+        // Taken from the evaluator that did the judging. It used to be
+        // reconstructed by walking `completeness.violations` for the versions
+        // they cited — which meant the stamp was populated only when the
+        // submission was *refused*, and was `{}` on every submission that
+        // succeeded. Every application in the register recorded that it had
+        // been judged under no rules at all, and the field existed to answer
+        // exactly the question it was silent on.
+        return {
+          submittedAt: now,
+          submittedUnderRuleSetIds: completeness.ruleSetVersions,
         }
-        return { submittedAt: now, submittedUnderRuleSetIds: stamped }
       }
 
       // Answering completions closes the outstanding items. Whether they are
@@ -118,7 +125,29 @@ export async function submitApplication(
     },
   })
 
-  return result.ok ? { ok: true } : { ok: false, violation: result.violation }
+  if (!result.ok) return { ok: false, violation: result.violation }
+
+  // After the commit, never inside it. A first submission tells the applicant
+  // and the intake counter; answering completions tells the examiner who is
+  // waiting on the file, and nobody else — the clerks have already handled it.
+  const subject = await applicationSubject(applicationId)
+  if (subject) {
+    if (resubmitting) {
+      const round = await db.completion.aggregate({
+        where: { applicationId },
+        _max: { round: true },
+      })
+      await notify({
+        event: 'COMPLETIONS_SUBMITTED',
+        subject: { application: subject, extra: { round: round._max.round ?? 1 } },
+      })
+    } else {
+      await notify({ event: 'APPLICATION_SUBMITTED', subject: { application: subject } })
+      await notify({ event: 'APPLICATION_AWAITING_INTAKE', subject: { application: subject } })
+    }
+  }
+
+  return { ok: true }
 }
 
 /** Withdrawal. The file stops being considered; it is never removed. */

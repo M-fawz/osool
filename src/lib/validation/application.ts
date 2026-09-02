@@ -328,8 +328,41 @@ export const CompletionItemSchema = z.object({
    * and a field that cannot be left blank can never produce that count.
    */
   checklistItemKey: optionalText(80),
+
+  /**
+   * Which part of the file the item is about.
+   *
+   * The paper form has one column of free text, and that is exactly why
+   * الاستيفاءات is the step 00-VISION calls the most exploitable in the whole
+   * process: a returned application arrives as a paragraph, and the applicant
+   * has to work out on their own which of the four things it is talking about.
+   * Grouping the items lets the portal show documents in one place and form
+   * data in another, which is how somebody actually goes and fixes them.
+   */
+  category: z
+    .enum(['DOCUMENT', 'APPLICATION_DATA', 'DECLARATION', 'CONTRACT', 'OTHER'])
+    .default('OTHER'),
+
+  /** The specific field, where the item is about data rather than a document. */
+  fieldKey: optionalText(120),
+
+  /** What is wrong. */
   descriptionAr: arabicText(500),
   descriptionEn: optionalText(500),
+
+  /**
+   * What would make it right.
+   *
+   * A separate sentence from "what is wrong", and required in the interface,
+   * because conflating the two is why the same item comes back twice: "the
+   * commercial register is illegible" tells an applicant nothing about whether
+   * to rescan it, get a certified copy, or renew it.
+   */
+  requiredCorrectionAr: optionalText(500),
+  requiredCorrectionEn: optionalText(500),
+
+  /** The requirement it rests on — "REQ-REG-030", "D578 Article 2". */
+  legalReference: optionalText(120),
 })
 
 export const RequestCompletionsSchema = z.object({

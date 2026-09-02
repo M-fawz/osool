@@ -62,6 +62,21 @@ export interface Completeness {
   /** Declarations affirmed, of those in force. */
   declarationsAffirmed: number
   declarationsTotal: number
+  /**
+   * `{ CODE: version }` for every rule set this evaluation actually consulted.
+   *
+   * Collected from the resolvers as they run, not assembled afterwards from the
+   * violations they produced. That distinction is the whole bug this field
+   * exists to fix: the previous stamp was built by walking `violations`, which
+   * is empty precisely when the application is complete — so every application
+   * that submitted successfully recorded that it had been judged under no rules
+   * at all, and the column whose entire purpose is to make a decision
+   * re-explainable to an inspector was `{}` on every row in the register.
+   *
+   * A rule set consulted and satisfied is still a rule set the applicant was
+   * judged against, and it is the one an inspector will ask about.
+   */
+  ruleSetVersions: Record<string, number>
 }
 
 /** Everything the evaluation needs, in one query. */
@@ -110,6 +125,8 @@ export async function evaluateCompleteness(
 
   const gaps: Gap[] = []
   const violations: RuleViolation[] = []
+  /** Filled by each resolver as it is consulted. See `ruleSetVersions` above. */
+  const ruleSetVersions: Record<string, number> = {}
 
   // ── Step 1 — applicant capacity and identity, REQ-REG-030, CDD §5.1 ──────
   if (!application.applicantCapacity) {
@@ -210,6 +227,7 @@ export async function evaluateCompleteness(
       lookup,
     )
     violations.push(...evaluation.violations)
+    Object.assign(ruleSetVersions, evaluation.ruleSetVersions)
   }
 
   // ── Step 5 — brokerage contract data, REQ-REG-030 ───────────────────────
@@ -231,6 +249,8 @@ export async function evaluateCompleteness(
     lookup,
   )
 
+  ruleSetVersions.DOC_CHECKLIST = checklist.ruleSetVersion
+
   const withDocuments = attachDocuments(checklist, application.documents)
   const requiredItems = withDocuments.filter((i) => i.required)
   const suppliedItems = requiredItems.filter((i) => i.document)
@@ -247,6 +267,7 @@ export async function evaluateCompleteness(
 
   // ── Step 7 — the fifteen declarations, REQ-REG-040 ──────────────────────
   const declarations = await resolveDeclarations(lookup)
+  ruleSetVersions.DECLARATIONS = declarations.ruleSetVersion
   const affirmed = new Map(application.declarations.map((d) => [d.declarationKey, d]))
 
   let affirmedCount = 0
@@ -299,6 +320,7 @@ export async function evaluateCompleteness(
     documentsRequired: requiredItems.length,
     declarationsAffirmed: affirmedCount,
     declarationsTotal: declarations.items.length,
+    ruleSetVersions,
   }
 }
 

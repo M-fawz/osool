@@ -201,6 +201,12 @@ export type ChainBreak =
 
 export interface ChainVerification {
   ok: boolean
+  /**
+   * FULL — the whole trail from seq 1 was walked, so "nothing was removed" is
+   * proved. WINDOW — a segment was walked and anchored to its predecessor, so
+   * those rows are proved unaltered but the rest of the trail was not read.
+   */
+  scope: 'FULL' | 'WINDOW'
   eventsChecked: number
   firstSeq: bigint | null
   lastSeq: bigint | null
@@ -223,9 +229,38 @@ export interface ChainVerification {
  *
  * Streams in batches so a register with millions of events verifies without
  * loading the trail into memory.
+ *
+ * ── Verifying a window instead of everything ─────────────────────────────
+ *
+ * `fromSeq` and `toSeq` verify a segment. This exists because the audit screen
+ * used to call this function with no bounds on every single page load: opening
+ * the screen re-hashed the entire trail, so the cost of looking at the last
+ * hundred events grew with the total number of events ever recorded. On a
+ * register that keeps everything for five years and audits reads as well as
+ * writes, that is a screen that gets slower every day it is used and eventually
+ * cannot be opened at all.
+ *
+ * Verifying a window is not a weaker check, provided it is anchored. The
+ * segment's first row must link to its real predecessor's hash — read from the
+ * database, not assumed — so a segment that verifies proves that *those* rows
+ * are unaltered and correctly linked into the chain before them. What a window
+ * cannot prove is that nothing was removed from a part of the trail it did not
+ * look at; that remains the job of the full sweep, which runs from the command
+ * line and on a schedule rather than on a page render.
+ *
+ * The distinction is reported honestly: `scope` says which of the two was done,
+ * and the screen says so in words rather than implying it proved more than it
+ * did.
  */
 export async function verifyChain(
-  options: { batchSize?: number; client?: Tx | typeof db } = {},
+  options: {
+    batchSize?: number
+    client?: Tx | typeof db
+    /** Verify from this sequence number. Anchored to the row before it. */
+    fromSeq?: bigint
+    /** Verify up to and including this sequence number. */
+    toSeq?: bigint
+  } = {},
 ): Promise<ChainVerification> {
   const batchSize = options.batchSize ?? 1000
   // Accepting a transaction handle is what lets the tampering proof mutate the
@@ -233,13 +268,44 @@ export async function verifyChain(
   // touches the real chain.
   const client = options.client ?? db
 
+  const windowed = options.fromSeq !== undefined || options.toSeq !== undefined
+
   const breaks: ChainBreak[] = []
   let eventsChecked = 0
   let firstSeq: bigint | null = null
   let lastSeq: bigint | null = null
-  let expectedPrevHash = GENESIS_HASH
   let expectedSeq = 1n
-  let cursor: bigint | null = null
+  let cursor: bigint | null = options.fromSeq !== undefined ? options.fromSeq - 1n : null
+
+  /*
+   * The anchor.
+   *
+   * A window starting at seq N must be checked against the real hash of N-1,
+   * fetched from the database. Starting from the genesis value instead would
+   * make every window report a broken link at its own first row, which is the
+   * obvious way to get this wrong and would have made the whole feature useless.
+   */
+  let expectedPrevHash = GENESIS_HASH
+  if (options.fromSeq !== undefined && options.fromSeq > 1n) {
+    const predecessor = await client.auditEvent.findFirst({
+      where: { seq: options.fromSeq - 1n },
+      select: { hash: true },
+    })
+    if (!predecessor) {
+      return {
+        ok: false,
+        scope: 'WINDOW',
+        eventsChecked: 0,
+        firstSeq: null,
+        lastSeq: null,
+        lastHash: null,
+        breaks: [
+          { kind: 'SEQUENCE_GAP', expectedSeq: options.fromSeq - 1n, foundSeq: options.fromSeq, id: '—' },
+        ],
+      }
+    }
+    expectedPrevHash = predecessor.hash
+  }
 
   for (;;) {
     const batch: Array<{
@@ -263,7 +329,10 @@ export async function verifyChain(
       prevHash: string
       hash: string
     }> = await client.auditEvent.findMany({
-      where: cursor === null ? {} : { seq: { gt: cursor } },
+      where: {
+        ...(cursor === null ? {} : { seq: { gt: cursor } }),
+        ...(options.toSeq !== undefined ? { seq: { ...(cursor === null ? {} : { gt: cursor }), lte: options.toSeq } } : {}),
+      },
       orderBy: { seq: 'asc' },
       take: batchSize,
     })
@@ -278,7 +347,11 @@ export async function verifyChain(
         // removed from the front — and a remover who also set the new first
         // row's prevHash to the genesis value would otherwise slip past both
         // the hash check and the link check.
-        if (row.seq !== 1n) {
+        //
+        // Only meaningful for a full sweep: a window is *expected* to start
+        // somewhere other than 1, and reporting that as tampering would make
+        // every windowed check cry wolf.
+        if (!windowed && row.seq !== 1n) {
           breaks.push({ kind: 'BAD_CHAIN_START', foundSeq: row.seq, id: row.id })
         }
       }
@@ -320,6 +393,7 @@ export async function verifyChain(
 
   return {
     ok: breaks.length === 0,
+    scope: windowed ? 'WINDOW' : 'FULL',
     eventsChecked,
     firstSeq,
     lastSeq,

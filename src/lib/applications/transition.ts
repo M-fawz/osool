@@ -5,6 +5,7 @@ import { isBrokerRole, roleLabel } from '@/lib/auth/roles'
 import { ruleSetVersionsInForce } from '@/lib/rules'
 import type { RuleViolation } from '@/lib/rules/violation'
 import {
+  notTheAssignedOfficer,
   notYourApplication,
   roleCannotPerform,
   segregationOfDuties,
@@ -31,7 +32,8 @@ import {
  *      refusal, not an error;
  *   3. the acting role is checked against that row's `allowedRoles`, and a
  *      broker is checked against the application's own firm;
- *   4. REQ-REG-052 is enforced where a decision is being taken;
+ *   4. REQ-REG-052 is enforced twice over — the acting officer must be the one
+ *      the file was assigned to, and must not be both examiner and decider;
  *   5. the caller's own writes run, then the status changes, then an
  *      ApplicationEvent and an AuditEvent are appended.
  *
@@ -97,6 +99,32 @@ const STAMPED_RULE_SETS = ['BROKER_CATEGORY', 'DOC_CHECKLIST', 'DECLARATIONS', '
  */
 const DECISION_ACTIONS = new Set(['approve', 'reject'])
 
+/**
+ * Steps only the officer the file is *assigned to* may take. REQ-REG-052.
+ *
+ * `allowedRoles` on the transition row answers "which post performs this step".
+ * It cannot answer "which *person*", and for the examination steps that second
+ * question is the one that matters: a step any examiner may take on any file
+ * has no accountable author, and segregation of duties between one anonymous
+ * officer and another is not segregation at all.
+ *
+ * This lives here, beside the role check, rather than in the callers — because
+ * the callers are where it was missing. Two Server Actions enforced it only by
+ * rendering or not rendering a button, which under CLAUDE.md rule 1 means they
+ * did not enforce it. Anything that reaches a transition now passes this,
+ * whether it came from a form, a proof script, a seed, or a hand-made POST.
+ *
+ * A file with no examiner named is refused too, deliberately: the alternative
+ * is that the first examiner to open an unassigned file becomes its examiner by
+ * side effect, which is exactly the self-service assignment the register's own
+ * transition description ("Assignment is recorded, never self-service") rules
+ * out.
+ */
+const ASSIGNED_OFFICER_ACTIONS: Record<string, 'examiner' | 'reviewer'> = {
+  request_completions: 'examiner',
+  recommend: 'examiner',
+}
+
 export async function transition(input: TransitionInput): Promise<TransitionResult> {
   try {
     return await db.$transaction(async (tx) => {
@@ -155,7 +183,52 @@ export async function transition(input: TransitionInput): Promise<TransitionResu
       // constraint violation, and so the control holds even if the constraint
       // is ever dropped by a careless migration.
       if (DECISION_ACTIONS.has(input.action) && application.examinerId === input.actor.userId) {
+        /*
+         * Record the attempt before refusing it.
+         *
+         * The refusal itself protects the register; it tells nobody. 00-VISION
+         * §5 signal 14 asks to *see* this — an officer trying to decide a file
+         * they examined is exactly the shape a paper process cannot show, and
+         * a control that leaves no trace when it fires is a control nobody can
+         * count.
+         *
+         * Written outside the transaction handle deliberately: this branch
+         * returns a refusal, the transaction rolls back, and an audit event
+         * written on `tx` would roll back with it — leaving no record at all.
+         */
+        await recordAuditEvent({
+          action: 'SEGREGATION_OF_DUTIES_REFUSED',
+          entityType: 'Application',
+          entityId: application.id,
+          actorUserId: input.actor.userId,
+          actorRole: input.actor.role,
+          actorLabel: `${input.actor.name} (${roleLabel(input.actor.role).en})`,
+          fromState: application.status,
+          reason:
+            'The acting officer examined this application, so REQ-REG-052 refuses their decision on it. ' +
+            'Nothing was changed. This event records that the step was attempted.',
+          ipAddress: input.actor.ipAddress,
+          userAgent: input.actor.userAgent,
+          payload: { attemptedAction: input.action },
+        })
+
         return { ok: false as const, violation: segregationOfDuties({ role: input.actor.role }) }
+      }
+
+      // …and the other half of it: is this the officer the file was assigned to?
+      const post = ASSIGNED_OFFICER_ACTIONS[input.action]
+      if (post) {
+        const assignedId = post === 'examiner' ? application.examinerId : application.reviewerId
+        if (assignedId !== input.actor.userId) {
+          return {
+            ok: false as const,
+            violation: notTheAssignedOfficer({
+              role: input.actor.role,
+              post,
+              assignedToName: await assignedOfficerName(tx, assignedId),
+            }),
+          }
+        }
       }
 
       const toState = permitted.toState
@@ -225,6 +298,63 @@ export async function transition(input: TransitionInput): Promise<TransitionResu
       return { ok: false, violation: error.violation }
     }
     throw error
+  }
+}
+
+/**
+ * The name of the officer a file is with, for the refusal copy.
+ *
+ * Arabic first — this is read on Arabic screens far more often — falling back
+ * to the Latin name, and to null where the file is not assigned at all, which
+ * the refusal renders as a different sentence entirely.
+ */
+async function assignedOfficerName(tx: Tx, userId: string | null): Promise<string | null> {
+  if (!userId) return null
+  const user = await tx.user.findUnique({
+    where: { id: userId },
+    select: { name: true, nameAr: true },
+  })
+  return user?.nameAr ?? user?.name ?? null
+}
+
+/**
+ * The same control, for the operations that are not transitions.
+ *
+ * Saving the internal review form does not move the file, so it never reaches
+ * `transition()` — and it is exactly as much the assigned examiner's work as
+ * signing it is. Rather than let that call site hand-roll its own version of
+ * the check (which is how the two Server Actions drifted apart in the first
+ * place), it calls this.
+ */
+export async function assignedOfficerGuard(input: {
+  applicationId: string
+  actor: Pick<ActorContext, 'userId' | 'role'>
+  post: 'examiner' | 'reviewer'
+}): Promise<{ ok: true } | { ok: false; violation: RuleViolation }> {
+  const application = await db.application.findUnique({
+    where: { id: input.applicationId },
+    select: { examinerId: true, reviewerId: true },
+  })
+
+  const assignedId =
+    input.post === 'examiner' ? (application?.examinerId ?? null) : (application?.reviewerId ?? null)
+
+  if (assignedId && assignedId === input.actor.userId) return { ok: true }
+
+  const holder = assignedId
+    ? await db.user.findUnique({
+        where: { id: assignedId },
+        select: { name: true, nameAr: true },
+      })
+    : null
+
+  return {
+    ok: false,
+    violation: notTheAssignedOfficer({
+      role: input.actor.role,
+      post: input.post,
+      assignedToName: holder?.nameAr ?? holder?.name ?? null,
+    }),
   }
 }
 

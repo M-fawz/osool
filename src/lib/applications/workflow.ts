@@ -7,14 +7,26 @@ import { governorateLabels } from '@/lib/reference/governorates'
 import { registrationCardHtml } from '@/lib/pdf/registration-card'
 import { renderPdf } from '@/lib/pdf/render'
 import { putDocument, sha256, storageKeyFor } from '@/lib/storage'
+import { notify } from '@/lib/notifications'
+import { applicationSubject, registrationSubject } from '@/lib/notifications/subjects'
 import type { RuleViolation } from '@/lib/rules/violation'
 import {
   allocateDeliverySerial,
   allocateRegistrationNumber,
   allocateTemporaryNumber,
 } from './numbering'
-import { precondition, segregationOfDuties } from './refusals'
-import { TransitionRefused, transition, type ActorContext } from './transition'
+import {
+  precondition,
+  roleCannotPerform,
+  segregationOfDuties,
+  stepNotAvailable,
+} from './refusals'
+import {
+  TransitionRefused,
+  assignedOfficerGuard,
+  transition,
+  type ActorContext,
+} from './transition'
 
 /**
  * REQ-REG-050, as functions.
@@ -35,6 +47,37 @@ export type StepOutcome = { ok: true } | { ok: false; violation: RuleViolation }
 
 function refused(violation: RuleViolation): StepOutcome {
   return { ok: false, violation }
+}
+
+/**
+ * Tell whoever the move concerns, after the move has actually happened.
+ *
+ * Always outside the transaction and always after `transition()` has returned
+ * ok. Two reasons, and both have bitten real systems: a mail send inside a
+ * transaction holds a row lock across a network round trip, and a notification
+ * sent before the commit will occasionally announce something that then rolls
+ * back. `notify()` swallows its own failures, so a step never fails because a
+ * mail server was briefly unreachable.
+ */
+async function announce(
+  event: Parameters<typeof notify>[0]['event'],
+  applicationId: string,
+  extra: Record<string, string | number | null | undefined> = {},
+  more: { registrationId?: string } = {},
+): Promise<void> {
+  const application = await applicationSubject(applicationId)
+  if (!application) return
+
+  await notify({
+    event,
+    subject: {
+      application,
+      registration: more.registrationId
+        ? await registrationSubject(more.registrationId)
+        : undefined,
+      extra,
+    },
+  })
 }
 
 // ── Step 1 — intake ─────────────────────────────────────────────────────────
@@ -101,7 +144,9 @@ export async function performAssignExaminer(
     auditPayload: { examinerId: input.examinerId },
   })
 
-  return result.ok ? { ok: true } : refused(result.violation)
+  if (!result.ok) return refused(result.violation)
+  await announce('APPLICATION_ASSIGNED', input.applicationId)
+  return { ok: true }
 }
 
 // ── Step 2 — examination ────────────────────────────────────────────────────
@@ -123,23 +168,33 @@ export async function saveExaminationRecord(
   actor: ActorContext,
   input: ExaminationInput,
 ): Promise<StepOutcome> {
-  const application = await db.application.findUnique({ where: { id: input.applicationId } })
+  // The same control the transition engine applies to `recommend`, from the one
+  // place that defines it. Saving the form is not a transition, so it never
+  // reaches that check on its own — and it is every bit as much the assigned
+  // examiner's work as signing it.
+  const assigned = await assignedOfficerGuard({
+    applicationId: input.applicationId,
+    actor,
+    post: 'examiner',
+  })
+  if (!assigned.ok) return refused(assigned.violation)
 
-  if (!application || application.examinerId !== actor.userId) {
+  const application = await db.application.findUnique({ where: { id: input.applicationId } })
+  if (!application) {
     return refused(
       precondition({
-        code: 'NOT_THE_ASSIGNED_EXAMINER',
-        requirementIds: ['REQ-REG-050', 'REQ-REG-052'],
+        code: 'APPLICATION_NOT_FOUND',
+        requirementIds: ['REQ-REG-050'],
         legalSource: 'GOEIC workflow, REQ-REG-050 step 2',
         ar: {
-          blocked: 'لا يمكنك تحرير نموذج المراجعة لهذا الطلب.',
-          why: 'هذا الطلب محال إلى فاحص آخر، والنموذج يحرره الفاحص المختص وحده.',
-          nextStep: 'ارجع إلى قائمة عملك واختر طلباً محالاً إليك.',
+          blocked: 'تعذّر فتح هذا الطلب.',
+          why: 'لا يوجد طلب بهذا الرقم في السجل.',
+          nextStep: 'ارجع إلى قائمة عملك واختر طلباً منها.',
         },
         en: {
-          blocked: 'You cannot complete the review form for this application.',
-          why: 'It is assigned to another examiner, and the form is completed by the assigned examiner alone.',
-          nextStep: 'Return to your queue and open an application assigned to you.',
+          blocked: 'This application could not be opened.',
+          why: 'No application with this reference exists in the register.',
+          nextStep: 'Return to your queue and open an application from it.',
         },
       }),
     )
@@ -215,8 +270,25 @@ export async function saveExaminationRecord(
 
 export interface CompletionItemInput {
   checklistItemKey: string | null
+  /** What is wrong. */
   descriptionAr: string
   descriptionEn: string | null
+
+  /**
+   * Which part of the file the item is about. Defaults to OTHER so that an
+   * existing caller keeps working, while the interface asks for it — an item
+   * with a category can be grouped on the applicant's screen, and one without
+   * lands in "other requirements", which is where a genuinely miscellaneous
+   * item belongs anyway.
+   */
+  category?: 'DOCUMENT' | 'APPLICATION_DATA' | 'DECLARATION' | 'CONTRACT' | 'OTHER'
+  /** The specific field, where the item is about data rather than a document. */
+  fieldKey?: string | null
+  /** What would make it right — a different sentence from what is wrong. */
+  requiredCorrectionAr?: string | null
+  requiredCorrectionEn?: string | null
+  /** The requirement it rests on. */
+  legalReference?: string | null
 }
 
 export async function performRequestCompletions(
@@ -249,8 +321,13 @@ export async function performRequestCompletions(
             itemNumber,
             round,
             checklistItemKey: item.checklistItemKey,
+            category: item.category ?? 'OTHER',
+            fieldKey: item.fieldKey ?? null,
             descriptionAr: item.descriptionAr,
             descriptionEn: item.descriptionEn,
+            requiredCorrectionAr: item.requiredCorrectionAr ?? null,
+            requiredCorrectionEn: item.requiredCorrectionEn ?? null,
+            legalReference: item.legalReference ?? null,
             requestedByUserId: actor.userId,
           },
         })
@@ -267,7 +344,19 @@ export async function performRequestCompletions(
     },
   })
 
-  return result.ok ? { ok: true } : refused(result.violation)
+  if (!result.ok) return refused(result.violation)
+
+  // The round is what makes a second return a second message rather than a
+  // duplicate of the first — see the catalogue's dedupe key for this event.
+  const round = await db.completion.aggregate({
+    where: { applicationId: input.applicationId },
+    _max: { round: true },
+  })
+  await announce('APPLICATION_RETURNED', input.applicationId, {
+    itemCount: input.items.length,
+    round: round._max.round ?? 1,
+  })
+  return { ok: true }
 }
 
 export async function performRecommend(
@@ -314,7 +403,17 @@ export async function performRecommend(
     },
   })
 
-  return result.ok ? { ok: true } : refused(result.violation)
+  if (!result.ok) return refused(result.violation)
+
+  const signed = await db.examinationRecord.findUnique({
+    where: { applicationId: input.applicationId },
+    select: { recommendation: true },
+  })
+  await announce('APPLICATION_READY_FOR_REVIEW', input.applicationId, {
+    recommendation:
+      signed?.recommendation === 'RECOMMEND_APPROVAL' ? 'Recommend approval' : 'Recommend refusal',
+  })
+  return { ok: true }
 }
 
 // ── Step 3 — review. REQ-REG-052 ────────────────────────────────────────────
@@ -357,7 +456,13 @@ export async function performDecision(
     auditPayload: { decision: input.decision },
   })
 
-  return result.ok ? { ok: true } : refused(result.violation)
+  if (!result.ok) return refused(result.violation)
+  await announce(
+    approving ? 'APPLICATION_APPROVED' : 'APPLICATION_REJECTED',
+    input.applicationId,
+    { reason: input.note },
+  )
+  return { ok: true }
 }
 
 // ── Step 4 — fees ───────────────────────────────────────────────────────────
@@ -422,7 +527,9 @@ export async function performRecordFees(actor: ActorContext, input: FeeInput): P
     },
   })
 
-  return result.ok ? { ok: true } : refused(result.violation)
+  if (!result.ok) return refused(result.violation)
+  await announce('FEES_RECORDED', input.applicationId, { receiptNumber: input.receiptNumber })
+  return { ok: true }
 }
 
 // ── Step 5 — card issuance ──────────────────────────────────────────────────
@@ -437,13 +544,91 @@ export async function performRecordFees(actor: ActorContext, input: FeeInput): P
  * because until now there was no Registration for them to belong to —
  * REQ-REG-063.
  *
- * The PDF is rendered before the transaction opens: Chromium takes a second or
- * two, and holding a row lock across it would block the queue.
+ * The PDF is rendered before the transaction opens, and that stays: Chromium
+ * takes a second or two, and holding a row lock across it would block the
+ * queue behind whoever clicked.
+ *
+ * ── The ordering problem, and what is done about it ──────────────────────
+ *
+ * Rendering first means two permanent things happen before `transition()` has
+ * agreed the step may happen at all: a registration number is taken from the
+ * series, and a document is written to content-addressed storage. If the
+ * transition then refuses, the number is spent on nothing — a gap in the
+ * register's numbering that an inspector would rightly ask about, with no
+ * record anywhere saying why.
+ *
+ * Every *deterministic* reason the transition would refuse is now checked
+ * first, by `issuanceEligibility()`, before anything is allocated: the file is
+ * not at AWAITING_PAYMENT, the acting role does not issue cards, the step is
+ * not on the transitions table. Those were the refusals that actually happened,
+ * and none of them can burn a number any more.
+ *
+ * What remains is a genuine race — another officer moves the file during the
+ * second or two Chromium is working. That cannot be designed away without
+ * either holding a lock across the render or issuing the number before it is
+ * printed on the card, and both are worse. So it is made *legible* instead: if
+ * the transition refuses after the number was taken, an audit event records the
+ * number and the reason. The gap in the series is then explained in the same
+ * trail as everything else, which is what a paper register does when a
+ * certificate is spoiled — it voids it and writes down why, rather than
+ * renumbering.
+ *
+ * The stored document needs no such treatment. Storage is content-addressed, so
+ * an unreferenced blob is bytes nobody points at, reused verbatim if the same
+ * card is ever rendered again — and CLAUDE.md rule 2 forbids deleting it in any
+ * case.
  */
+
+/**
+ * Would `transition()` accept `issue_card` from this actor, right now?
+ *
+ * A read-only preflight against the same transitions table the engine consults,
+ * so the two cannot disagree about what is permitted. It is not the control —
+ * `transition()` re-checks everything under a row lock and remains the only
+ * writer of the status — it is what stops the deterministic refusals from
+ * happening on the far side of a permanent side effect.
+ */
+async function issuanceEligibility(
+  actor: ActorContext,
+  applicationId: string,
+): Promise<StepOutcome> {
+  const application = await db.application.findUnique({
+    where: { id: applicationId },
+    select: { status: true },
+  })
+
+  if (!application) {
+    return refused(stepNotAvailable({ action: 'issue_card', currentState: 'DRAFT' }))
+  }
+
+  const permitted = await db.applicationTransition.findFirst({
+    where: { fromState: application.status, action: 'issue_card', archivedAt: null },
+  })
+
+  if (!permitted) {
+    return refused(stepNotAvailable({ action: 'issue_card', currentState: application.status }))
+  }
+
+  if (!permitted.allowedRoles.includes(actor.role)) {
+    return refused(
+      roleCannotPerform({
+        action: 'issue_card',
+        role: actor.role,
+        allowedRoles: permitted.allowedRoles,
+      }),
+    )
+  }
+
+  return { ok: true }
+}
 export async function performIssueCard(
   actor: ActorContext,
   input: { applicationId: string },
 ): Promise<StepOutcome> {
+  // Before anything permanent happens. See the note above this function.
+  const eligible = await issuanceEligibility(actor, input.applicationId)
+  if (!eligible.ok) return eligible
+
   const application = await db.application.findUnique({
     where: { id: input.applicationId },
     include: {
@@ -645,7 +830,42 @@ export async function performIssueCard(
     },
   })
 
-  return result.ok ? { ok: true } : refused(result.violation)
+  if (!result.ok) {
+    // The preflight passed and the transition still refused, so the file moved
+    // underneath this issuance. The number is spent; say so, in the trail, with
+    // the reason — a gap an inspector can account for beats a silent one.
+    await recordAuditEvent({
+      action: 'REGISTRATION_NUMBER_VOIDED',
+      entityType: 'Application',
+      entityId: input.applicationId,
+      actorUserId: actor.userId,
+      actorRole: actor.role,
+      actorLabel: `${actor.name} (${roleLabel(actor.role).en})`,
+      reason:
+        'A registration number was allocated for issuance, and the step was then refused. ' +
+        'The number is not in use and will not be reissued; this event accounts for the gap.',
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent,
+      payload: {
+        voidedRegistrationNumber: registrationNumber,
+        refusalCode: result.violation.code,
+        renderedCardSha256: hash,
+      },
+    })
+    return refused(result.violation)
+  }
+
+  const issued = await db.cardIssuance.findUnique({
+    where: { applicationId: input.applicationId },
+    select: { registrationId: true },
+  })
+  await announce(
+    'CARD_ISSUED',
+    input.applicationId,
+    { registrationNumber },
+    { registrationId: issued?.registrationId },
+  )
+  return { ok: true }
 }
 
 // ── Step 6 — delivery ───────────────────────────────────────────────────────
@@ -682,7 +902,19 @@ export async function performRecordDelivery(
     },
   })
 
-  return result.ok ? { ok: true } : refused(result.violation)
+  if (!result.ok) return refused(result.violation)
+
+  const delivered = await db.cardIssuance.findUnique({
+    where: { applicationId: input.applicationId },
+    select: { registrationId: true },
+  })
+  await announce(
+    'CARD_DELIVERED',
+    input.applicationId,
+    { deliveredToName: input.deliveredToName },
+    { registrationId: delivered?.registrationId },
+  )
+  return { ok: true }
 }
 
 // ── Steps 7 and 8 — data extraction and archiving ───────────────────────────

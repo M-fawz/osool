@@ -168,6 +168,67 @@ export function segregationOfDuties(input: { role: Role }): RuleViolation {
 }
 
 /**
+ * REQ-REG-052, the other half.
+ *
+ * Segregation of duties says the examiner and the reviewer must be different
+ * people. It only means anything if the *examiner* is a specific person: a step
+ * any examiner may perform on any file is a step with no accountable author,
+ * and the segregation the next step enforces is then between one anonymous
+ * officer and another.
+ *
+ * So the file names its examiner at assignment, and from that moment the
+ * examiner's steps belong to that person. This refusal is what a colleague sees
+ * on someone else's file. Like the segregation refusal it must not read as an
+ * accusation — opening a colleague's file to look at it is ordinary, and the
+ * officer has done nothing wrong by trying.
+ *
+ * `assignedTo` is deliberately a name and not an id: an officer who needs to
+ * hand a file over needs to know who currently holds it.
+ */
+export function notTheAssignedOfficer(input: {
+  role: Role
+  post: 'examiner' | 'reviewer'
+  assignedToName: string | null
+}): RuleViolation {
+  const held = roleLabels[input.role]
+  const postAr = input.post === 'examiner' ? 'الفاحص المختص' : 'المراجع المختص'
+  const postEn = input.post === 'examiner' ? 'the assigned examiner' : 'the assigned reviewer'
+
+  const whyAr = input.assignedToName
+    ? `هذا الطلب محال إلى ${input.assignedToName}، وخطوات ${postAr} يؤديها الموظف المُحال إليه الطلب وحده. صلاحيتك هي «${held.ar}» وهي صحيحة، لكن هذا الملف ليس ملفك.`
+    : `هذا الطلب لم يُحل بعد إلى ${postAr}، وخطوات هذه المرحلة لا تُؤدى قبل الإحالة. الإحالة تُسجَّل ولا تحدث تلقائياً بمجرد فتح الملف.`
+
+  const whyEn = input.assignedToName
+    ? `This application is assigned to ${input.assignedToName}, and ${postEn}’s steps are performed by that officer alone. You hold "${held.en}", which is the right role — this is simply not your file.`
+    : `This application has not been assigned to ${postEn} yet, and the steps of this stage are not performed before assignment. Assignment is recorded deliberately; it does not happen as a side effect of opening the file.`
+
+  return {
+    code: 'NOT_THE_ASSIGNED_OFFICER',
+    severity: 'BLOCKING',
+    requirementIds: ['REQ-REG-050', 'REQ-REG-052'],
+    legalSource: 'GOEIC workflow, REQ-REG-050 step 2 — the file is examined by the officer it was assigned to',
+    needsCounsel: false,
+    evidence: { role: input.role, post: input.post, assigned: input.assignedToName !== null },
+    ar: {
+      blocked: 'لا يمكنك تنفيذ هذه الخطوة على هذا الطلب.',
+      why: whyAr,
+      nextStep: input.assignedToName
+        ? 'ارجع إلى قائمة عملك واختر طلباً محالاً إليك. إذا كان يلزم نقل هذا الطلب إليك، فالإحالة تتم من كاتب القيد.'
+        : 'أعد الطلب إلى كاتب القيد لإحالته إلى فاحص، ثم يتولى الفاحص المُحال إليه هذه الخطوة.',
+      whoToAsk: `توزيع الملفات على الفاحصين من اختصاص كاتب القيد. للاستفسار، راجع ${AUTHORITY_AR}`,
+    },
+    en: {
+      blocked: 'You cannot perform this step on this application.',
+      why: whyEn,
+      nextStep: input.assignedToName
+        ? 'Return to your queue and open a file assigned to you. If this file should be yours, reassignment is done by the registry clerk.'
+        : 'Send the file back to the registry clerk to be assigned to an examiner; the assigned examiner then performs this step.',
+      whoToAsk: `Allocation of files to examiners is the registry clerk’s function. For questions, refer to ${AUTHORITY_EN}`,
+    },
+  }
+}
+
+/**
  * A step that requires something to have been recorded first — completions with
  * no items, a card with no fee record, a delivery with no card.
  */

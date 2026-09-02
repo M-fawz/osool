@@ -1,5 +1,6 @@
-import type { ApplicationStatus, Role } from '@prisma/client'
+import type { ApplicationStatus, Prisma, Role } from '@prisma/client'
 import { db } from '@/lib/db'
+import { DEFAULT_PAGE_SIZE, type PageRequest } from '@/lib/pagination'
 
 /**
  * The queues. One per government role, and each one is that role's landing
@@ -77,16 +78,30 @@ function wholeDaysSince(date: Date, now: Date): number {
 export async function loadQueue(input: {
   states: ApplicationStatus[]
   excludeExaminedBy?: string | null
-  limit?: number
+  /** Free text over the firm's name and the temporary number. */
+  search?: string | null
+  page?: PageRequest
   now?: Date
 }): Promise<{ rows: QueueRow[]; total: number }> {
   const now = input.now ?? new Date()
-  const limit = input.limit ?? 100
+  const page = input.page ?? { page: 1, pageSize: DEFAULT_PAGE_SIZE, skip: 0, take: DEFAULT_PAGE_SIZE }
+  const term = input.search?.trim()
 
-  const where = {
+  const where: Prisma.ApplicationWhereInput = {
     status: { in: input.states },
     archivedAt: null,
     ...(input.excludeExaminedBy ? { NOT: { examinerId: input.excludeExaminedBy } } : {}),
+    ...(term
+      ? {
+          OR: [
+            { temporaryNumber: { contains: term, mode: 'insensitive' } },
+            { entityData: { tradeNameAr: { contains: term, mode: 'insensitive' } } },
+            { entityData: { tradeNameEn: { contains: term, mode: 'insensitive' } } },
+            { brokerEntity: { tradeNameAr: { contains: term, mode: 'insensitive' } } },
+            { brokerEntity: { tradeNameEn: { contains: term, mode: 'insensitive' } } },
+          ],
+        }
+      : {}),
   }
 
   const [total, applications] = await Promise.all([
@@ -96,7 +111,8 @@ export async function loadQueue(input: {
       // Oldest movement first: the file that has waited longest is the one at
       // the top of the screen.
       orderBy: { updatedAt: 'asc' },
-      take: limit,
+      skip: page.skip,
+      take: page.take,
       include: {
         entityData: { select: { tradeNameAr: true, tradeNameEn: true } },
         brokerEntity: { select: { tradeNameAr: true, tradeNameEn: true } },
@@ -136,7 +152,7 @@ export async function loadQueue(input: {
 export async function loadQueueForRole(
   role: Role,
   actorUserId: string,
-  options: { limit?: number; now?: Date } = {},
+  options: { page?: PageRequest; search?: string | null; now?: Date } = {},
 ): Promise<{ rows: QueueRow[]; total: number }> {
   const states = QUEUE_STATES[role]
   if (!states || states.length === 0) return { rows: [], total: 0 }
@@ -145,16 +161,44 @@ export async function loadQueueForRole(
     states,
     // REQ-REG-052, applied to what the reviewer is even shown.
     excludeExaminedBy: role === 'REVIEWER' ? actorUserId : null,
-    limit: options.limit,
+    page: options.page,
+    search: options.search,
     now: options.now,
   })
 }
 
-/** The broker's own applications, newest first — the portal's landing list. */
-export async function loadBrokerApplications(brokerEntityId: string) {
+/**
+ * The broker's own applications, newest first — the portal's landing list.
+ *
+ * Paged like everything else. This one previously had no `take` at all, which
+ * on the portal is the least dangerous version of the problem — a firm has a
+ * handful of applications — right up until a large brokerage with years of
+ * renewals opens the page and the server materialises all of them.
+ */
+export async function loadBrokerApplications(
+  brokerEntityId: string,
+  page?: PageRequest,
+): Promise<{
+  rows: Awaited<ReturnType<typeof brokerApplicationRows>>
+  total: number
+}> {
+  const where = { brokerEntityId, archivedAt: null }
+  const [total, rows] = await Promise.all([
+    db.application.count({ where }),
+    brokerApplicationRows(where, page),
+  ])
+  return { rows, total }
+}
+
+function brokerApplicationRows(
+  where: Prisma.ApplicationWhereInput,
+  page?: PageRequest,
+) {
   return db.application.findMany({
-    where: { brokerEntityId, archivedAt: null },
+    where,
     orderBy: { updatedAt: 'desc' },
+    skip: page?.skip ?? 0,
+    take: page?.take ?? DEFAULT_PAGE_SIZE,
     include: {
       entityData: { select: { tradeNameAr: true, tradeNameEn: true } },
       registration: { select: { registrationNumber: true, validFrom: true, validTo: true } },
