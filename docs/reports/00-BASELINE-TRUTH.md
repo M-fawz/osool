@@ -223,7 +223,35 @@ no-delete triggers do not save this: `TRUNCATE` is granted, and while the
 truncate guard would refuse it, `DELETE`/`UPDATE` on `audit_event` via PostgREST
 bypasses every control written in TypeScript.
 
-**This is the first question I need answered, and it gates the demo.**
+**Checked, read-only, 3 September 2026 — the project no longer exists.**
+
+```
+curl: (6) Could not resolve host: <redacted>.supabase.co
+nslookup → *** can't find <redacted>.supabase.co: Non-existent domain
+```
+
+The database host in `DATABASE_URL` also returns `Non-existent domain`. Control
+tests (`supabase.com` → 200, `example.com` → 200) rule out a local network
+fault. Full evidence: `docs/reports/evidence/prod-postgrest-check.md`.
+
+| ID | Status now |
+|---|---|
+| SEC-1 / F-02 | **SUPERSEDED** — project unreachable, exposure unverifiable |
+| F-01 | **OPEN** — no evidence either way about data recoverability |
+
+**This does not clear the defect.** The exposure was never closed; the project
+that had it was removed. `CLOSE-THE-DATABASE.sql` is still not part of
+provisioning, so **the next database provisioned inherits the same exposure**.
+Making it step one of database creation — applied before the application ever
+holds credentials, with its verification queries as a documented gate — is now a
+fixed requirement of Phase 4, not a proposal.
+
+**And one thing the check found that nothing had reported:** the deployed
+application at `osool-cyan.vercel.app` still answers `HTTP 200` on `/` while its
+database no longer exists. Nothing alerted. `/api/health` returns `404` because
+the health endpoint has never been deployed — the one endpoint that would have
+caught this exists only in the repository. The invisible-outage defect is now an
+observed fact, not a reasoned risk.
 
 ---
 
