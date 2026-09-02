@@ -344,6 +344,27 @@ Beyond that, the database refuses to help: every table of record carries `BEFORE
 `BEFORE TRUNCATE` triggers that raise an exception. A destructive statement typed into `psql`
 against production fails at the database. `CLAUDE.md` rule 2.
 
+### Hardening — not optional, and not in a migration
+
+`CLOSE-THE-DATABASE.sql` revokes the privileges that allow the database to be read around the
+application entirely. It is deliberately **not** a migration, so a newly provisioned or restored
+database does not have it. The order is:
+
+```
+create database → migrations → CLOSE-THE-DATABASE.sql → point the app at it
+```
+
+Applying it after the application is live leaves a window in which the second door is open.
+
+### Backups
+
+Covered in [`BACKUP-AND-RECOVERY.md`](BACKUP-AND-RECOVERY.md), which also states plainly what has
+not been done: the restore procedure there has never been rehearsed. Two things in that document
+are specific to this register and are easy to get wrong — the audit chain's head hash has to be
+recorded outside the database to prove a restore was complete, and object storage must be restored
+to a point at or *ahead of* the database, never behind it, or rows will reference documents that do
+not exist.
+
 ---
 
 ## Authentication in production
@@ -446,4 +467,6 @@ has to be undone, it is a new forward migration, reviewed, with the data path wr
 | [`../README.md`](../README.md) | Running it locally |
 | [`02-SYSTEM-ARCHITECTURE.md`](02-SYSTEM-ARCHITECTURE.md) | §7 immutability and retention, §10 the hosting decision |
 | [`01-LEGAL-REFERENCE.md`](01-LEGAL-REFERENCE.md) | Every rule the system enforces |
+| [`BACKUP-AND-RECOVERY.md`](BACKUP-AND-RECOVERY.md) | What to back up, how to restore it, and how to prove the restore was complete |
+| [`CLOSE-THE-DATABASE.sql`](CLOSE-THE-DATABASE.sql) | The privilege revocation every provisioned database needs |
 | [`../CLAUDE.md`](../CLAUDE.md) | The rules that override everything else |

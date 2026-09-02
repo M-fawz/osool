@@ -26,6 +26,8 @@ const ACCOUNTS = {
 const ROUTES = [
   '/dashboard', '/intake', '/examination', '/review', '/issuance',
   '/records', '/archive', '/audit', '/admin/users', '/application', '/registration',
+  // Added with the register search, the signals queue, and the counter's diary.
+  '/register', '/supervision', '/appointments',
 ]
 
 let pass = 0
@@ -202,16 +204,26 @@ console.log(`  note  suspended@osool.test sign-in -> ${suspended.status} (fixtur
 // ── 3. Role matrix ──────────────────────────────────────────────────────────
 console.log('\n3. Role access matrix')
 const EXPECTED = {
-  admin:     { '/dashboard': 'page', '/admin/users': 'page', '/audit': 'refused', '/intake': 'refused', '/examination': 'refused', '/review': 'refused', '/issuance': 'refused', '/records': 'refused', '/archive': 'refused', '/application': 'refused', '/registration': 'refused' },
-  clerk:     { '/dashboard': 'page', '/intake': 'page', '/admin/users': 'refused', '/examination': 'refused', '/review': 'refused', '/audit': 'refused' },
-  examiner:  { '/dashboard': 'page', '/examination': 'page', '/intake': 'refused', '/review': 'refused', '/admin/users': 'refused', '/audit': 'refused' },
-  reviewer:  { '/dashboard': 'page', '/review': 'page', '/examination': 'refused', '/admin/users': 'refused' },
-  issuer:    { '/dashboard': 'page', '/issuance': 'page', '/review': 'refused', '/admin/users': 'refused' },
-  data:      { '/dashboard': 'page', '/records': 'page', '/admin/users': 'refused' },
-  files:     { '/dashboard': 'page', '/archive': 'page', '/admin/users': 'refused' },
-  auditor:   { '/dashboard': 'page', '/audit': 'page', '/admin/users': 'refused', '/intake': 'refused' },
-  aml:       { '/dashboard': 'page', '/admin/users': 'refused', '/intake': 'refused' },
-  broker:    { '/dashboard': 'page', '/application': 'page', '/registration': 'page', '/admin/users': 'refused', '/intake': 'refused', '/audit': 'refused', '/examination': 'refused' },
+  admin:     { '/dashboard': 'page', '/admin/users': 'page', '/audit': 'refused', '/intake': 'refused', '/examination': 'refused', '/review': 'refused', '/issuance': 'refused', '/records': 'refused', '/archive': 'refused', '/application': 'refused', '/registration': 'refused',
+               // §4: administration is not access. Every case-data screen,
+               // including the three new ones, refuses the administrator.
+               '/register': 'refused', '/supervision': 'refused', '/appointments': 'refused' },
+  clerk:     { '/dashboard': 'page', '/intake': 'page', '/admin/users': 'refused', '/examination': 'refused', '/review': 'refused', '/audit': 'refused',
+               '/register': 'page', '/appointments': 'page', '/supervision': 'refused' },
+  examiner:  { '/dashboard': 'page', '/examination': 'page', '/intake': 'refused', '/review': 'refused', '/admin/users': 'refused', '/audit': 'refused',
+               // An examiner looks the register up; they do not triage signals
+               // about examiners, and they do not stand at a counter.
+               '/register': 'page', '/supervision': 'refused', '/appointments': 'refused' },
+  reviewer:  { '/dashboard': 'page', '/review': 'page', '/examination': 'refused', '/admin/users': 'refused', '/register': 'page', '/supervision': 'refused' },
+  issuer:    { '/dashboard': 'page', '/issuance': 'page', '/review': 'refused', '/admin/users': 'refused', '/register': 'page', '/appointments': 'page' },
+  data:      { '/dashboard': 'page', '/records': 'page', '/admin/users': 'refused', '/register': 'page', '/appointments': 'page' },
+  files:     { '/dashboard': 'page', '/archive': 'page', '/admin/users': 'refused', '/register': 'page', '/appointments': 'refused' },
+  auditor:   { '/dashboard': 'page', '/audit': 'page', '/admin/users': 'refused', '/intake': 'refused', '/register': 'page', '/supervision': 'page', '/appointments': 'page' },
+  aml:       { '/dashboard': 'page', '/admin/users': 'refused', '/intake': 'refused', '/register': 'page', '/supervision': 'page', '/appointments': 'refused' },
+  broker:    { '/dashboard': 'page', '/application': 'page', '/registration': 'page', '/admin/users': 'refused', '/intake': 'refused', '/audit': 'refused', '/examination': 'refused',
+               // The supervised population does not read the register as a
+               // list, does not see signals, and does not open the diary.
+               '/register': 'refused', '/supervision': 'refused', '/appointments': 'refused' },
 }
 
 for (const [who, expectations] of Object.entries(EXPECTED)) {
@@ -235,7 +247,15 @@ for (const [arPath, enPath] of [['/', '/en'], ['/login', '/en/login'], ['/dashbo
 }
 
 // The queue screens must mirror too, in the reader's own language.
-for (const [who, path] of [['examiner', '/en/examination'], ['reviewer', '/en/review'], ['auditor', '/en/audit'], ['admin', '/en/admin/users']]) {
+for (const [who, path] of [
+  ['examiner', '/en/examination'],
+  ['reviewer', '/en/review'],
+  ['auditor', '/en/audit'],
+  ['admin', '/en/admin/users'],
+  ['examiner', '/en/register'],
+  ['aml', '/en/supervision'],
+  ['clerk', '/en/appointments'],
+]) {
   if (!jars[who]) continue
   const r = await get(path, jars[who])
   check(`${who} ${path}`, r.status === 200 && classify(r.text) === 'page', `status ${r.status} ${classify(r.text)}`)
@@ -288,6 +308,19 @@ for (const who of ['examiner', 'broker', 'auditor']) {
   if (!jars[who]) continue
   const r = await postAction('/admin/users', jars[who], '[]')
   check(`${who} POST /admin/users refused`, r.status !== 200 || classify(await r.text()) !== 'page', `status ${r.status}`)
+}
+
+// ── 7. Health ──────────────────────────────────────────────────────────────
+console.log('\n7. Health endpoint')
+{
+  const res = await fetch(`${BASE}/api/health?deep`, { redirect: 'manual' })
+  const body = await res.json().catch(() => null)
+  check('health answers', res.status === 200 || res.status === 503, `status ${res.status}`)
+  check('health reports the database', Boolean(body?.checks?.some?.((c) => c.name === 'database')), JSON.stringify(body).slice(0, 120))
+  // The endpoint is unauthenticated, so it must disclose nothing about how the
+  // deployment is wired — no hostname, no key, no connection string.
+  const text = JSON.stringify(body ?? {})
+  check('health leaks no connection detail', !/postgres(ql)?:\/\/|supabase|amazonaws|@[a-z0-9.-]+\.(com|net|io)/i.test(text), text.slice(0, 160))
 }
 
 console.log(`\n${'═'.repeat(72)}`)
