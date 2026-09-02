@@ -195,6 +195,44 @@ enum AuditAccessType {
   WRITE
 }
 
+/// What a returned item is *about*, so the broker's screen can group the
+/// corrections the way they will actually go and fix them: documents in one
+/// place, form data in another. REQ-REG-050 step 2.
+enum CompletionCategory {
+  DOCUMENT
+  APPLICATION_DATA
+  DECLARATION
+  CONTRACT
+  OTHER
+}
+
+/// Why the applicant is coming to the counter. The two occasions the paper
+/// process actually has: handing over the original papers, and collecting the
+/// card. REQ-REG-050 steps 1 and 6.
+enum AppointmentPurpose {
+  DOCUMENT_HANDOVER
+  CARD_COLLECTION
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CANCELLED
+  RESCHEDULED
+  ATTENDED
+  NO_SHOW
+}
+
+enum NotificationChannel {
+  EMAIL
+}
+
+enum NotificationStatus {
+  SENT
+  FAILED
+  /// Deliberately not sent — no address, or the recipient set has nobody in it.
+  SUPPRESSED
+}
+
 enum InspectionStatus {
   SCHEDULED
   IN_PROGRESS
@@ -252,10 +290,10 @@ enum Governorate {
 /// request — never trusted from the session cookie — so a suspension or a role
 /// change takes effect immediately rather than at next sign-in.
 model User {
-  id            String     @id @default(cuid())
+  id            String  @id @default(cuid())
   name          String
-  email         String     @unique
-  emailVerified Boolean    @default(false)
+  email         String  @unique
+  emailVerified Boolean @default(false)
   image         String?
 
   /// Defaults to the least-privileged role in the system, deliberately.
@@ -286,28 +324,34 @@ model User {
   suspendedReason String?
   lastSignInAt    DateTime?
 
-  sessions           Session[]
-  accounts           Account[]
-  auditEvents        AuditEvent[]
-  applicationEvents  ApplicationEvent[]
-  examinedApps       Application[]        @relation("ApplicationExaminer")
-  reviewedApps       Application[]        @relation("ApplicationReviewer")
-  intakeApps         Application[]        @relation("ApplicationIntakeClerk")
-  issuedApps         Application[]        @relation("ApplicationCardIssuer")
-  requestedCompletions Completion[]       @relation("CompletionRequestedBy")
-  resolvedCompletions  Completion[]       @relation("CompletionResolvedBy")
-  uploadedDocuments  Document[]
-  publishedRuleSets  RuleSet[]
-  signalDispositions Signal[]             @relation("SignalDisposedBy")
-  inspections        Inspection[]         @relation("InspectionInspector")
-  legalHolds         LegalHold[]
-  examinationsSigned ExaminationRecord[]  @relation("ExaminationExaminer")
-  examinationsReviewed ExaminationRecord[] @relation("ExaminationReviewer")
-  feesRecorded       FeeRecord[]          @relation("FeeRecordedBy")
-  cardsIssued        CardIssuance[]       @relation("CardIssuedBy")
-  cardsDelivered     CardIssuance[]       @relation("CardDeliveredBy")
-  filesDataExtracted FileHandlingRecord[] @relation("FileDataExtractedBy")
-  filesArchived      FileHandlingRecord[] @relation("FileArchivedBy")
+  sessions              Session[]
+  accounts              Account[]
+  auditEvents           AuditEvent[]
+  applicationEvents     ApplicationEvent[]
+  examinedApps          Application[]        @relation("ApplicationExaminer")
+  reviewedApps          Application[]        @relation("ApplicationReviewer")
+  intakeApps            Application[]        @relation("ApplicationIntakeClerk")
+  issuedApps            Application[]        @relation("ApplicationCardIssuer")
+  requestedCompletions  Completion[]         @relation("CompletionRequestedBy")
+  resolvedCompletions   Completion[]         @relation("CompletionResolvedBy")
+  uploadedDocuments     Document[]
+  publishedRuleSets     RuleSet[]
+  signalDispositions    Signal[]             @relation("SignalDisposedBy")
+  inspections           Inspection[]         @relation("InspectionInspector")
+  legalHolds            LegalHold[]
+  examinationsSigned    ExaminationRecord[]  @relation("ExaminationExaminer")
+  examinationsReviewed  ExaminationRecord[]  @relation("ExaminationReviewer")
+  feesRecorded          FeeRecord[]          @relation("FeeRecordedBy")
+  cardsIssued           CardIssuance[]       @relation("CardIssuedBy")
+  cardsDelivered        CardIssuance[]       @relation("CardDeliveredBy")
+  filesDataExtracted    FileHandlingRecord[] @relation("FileDataExtractedBy")
+  filesArchived         FileHandlingRecord[] @relation("FileArchivedBy")
+  notifications         Notification[]
+  registrationEvents    RegistrationEvent[]
+  slotsCreated          AppointmentSlot[]    @relation("SlotCreatedBy")
+  appointmentsBooked    Appointment[]        @relation("AppointmentBookedBy")
+  appointmentsCancelled Appointment[]        @relation("AppointmentCancelledBy")
+  appointmentsAttended  Appointment[]        @relation("AppointmentAttendance")
 
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -436,24 +480,24 @@ model Party {
   /// office. Holding only the number and the date would have made the register
   /// unable to answer "which office issued this?", which is the question an
   /// examiner asks when a register extract looks wrong.
-  commercialRegisterOffice        String?
-  commercialRegisterRenewalDate   DateTime?
-  taxOffice                       String?
+  commercialRegisterOffice      String?
+  commercialRegisterRenewalDate DateTime?
+  taxOffice                     String?
 
   applications Application[] @relation("ApplicationApplicant")
 
   // ── Contact ─────────────────────────────────────────────────────────────
-  addressLine  String?
-  governorate  Governorate?
-  poBox        String?
-  telephone    String?
-  email        String?
+  addressLine String?
+  governorate Governorate?
+  poBox       String?
+  telephone   String?
+  email       String?
 
-  ownedEdges     Ownership[] @relation("OwnerParty")
-  ownsEdges      Ownership[] @relation("OwnedParty")
-  brokerEntities BrokerEntity[]
-  poaPrincipals  PowerOfAttorney[] @relation("PoaPrincipal")
-  poaAgents      PowerOfAttorney[] @relation("PoaAgent")
+  ownedEdges        Ownership[]               @relation("OwnerParty")
+  ownsEdges         Ownership[]               @relation("OwnedParty")
+  brokerEntities    BrokerEntity[]
+  poaPrincipals     PowerOfAttorney[]         @relation("PoaPrincipal")
+  poaAgents         PowerOfAttorney[]         @relation("PoaAgent")
   complianceTenures ComplianceOfficerTenure[]
 
   createdAt      DateTime  @default(now())
@@ -530,13 +574,14 @@ model BrokerEntity {
   headOfficeAddress String?
   governorate       Governorate?
 
-  registrations      Registration[]
-  applications       Application[]
-  users              User[]
-  contracts          BrokerageContract[]
-  complianceTenures  ComplianceOfficerTenure[]
-  trainingRecords    TrainingRecord[]
-  inspections        Inspection[]
+  registrations     Registration[]
+  applications      Application[]
+  users             User[]
+  contracts         BrokerageContract[]
+  complianceTenures ComplianceOfficerTenure[]
+  trainingRecords   TrainingRecord[]
+  inspections       Inspection[]
+  appointments      Appointment[]
 
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -580,9 +625,11 @@ model Registration {
   decidedUnderRuleSetId String?
   decidedUnderRuleSet   RuleSet? @relation(fields: [decidedUnderRuleSetId], references: [id], onDelete: Restrict)
 
-  applications Application[]
-  contracts    BrokerageContract[]
-  cardIssuance CardIssuance?
+  applications  Application[]
+  contracts     BrokerageContract[]
+  cardIssuance  CardIssuance?
+  events        RegistrationEvent[]
+  notifications Notification[]
 
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -629,7 +676,7 @@ model Application {
   /// submission under REQ-REG-021.
   requestedCategory BrokerCategory?
   requestedTypes    BrokerType[]
-  paidUpCapital     Decimal?          @db.Decimal(18, 2)
+  paidUpCapital     Decimal?           @db.Decimal(18, 2)
   applicantCapacity ApplicantCapacity?
 
   /// The natural person signing, as distinct from the firm being registered.
@@ -661,15 +708,17 @@ model Application {
 
   rejectionReason String?
 
-  events       ApplicationEvent[]
-  completions  Completion[]
-  declarations Declaration[]
-  documents    Document[]
+  events            ApplicationEvent[]
+  completions       Completion[]
+  declarations      Declaration[]
+  documents         Document[]
   powerOfAttorneyId String?
-  powerOfAttorney   PowerOfAttorney? @relation(fields: [powerOfAttorneyId], references: [id], onDelete: Restrict)
-  signals      Signal[]
+  powerOfAttorney   PowerOfAttorney?   @relation(fields: [powerOfAttorneyId], references: [id], onDelete: Restrict)
+  signals           Signal[]
 
   // ── REQ-REG-030's three data blocks, and the six workflow steps ─────────
+  appointments  Appointment[]
+  notifications Notification[]
   entityData    ApplicationEntityData?
   contractData  ApplicationContractData[]
   examination   ExaminationRecord?
@@ -694,11 +743,11 @@ model Application {
 /// "Allowed transitions live in one table and are checked server-side.
 /// A status is never assignable directly."
 model ApplicationTransition {
-  id        String            @id @default(cuid())
-  fromState ApplicationStatus
-  toState   ApplicationStatus
+  id           String            @id @default(cuid())
+  fromState    ApplicationStatus
+  toState      ApplicationStatus
   /// The action name a Server Action must name to make this move.
-  action    String
+  action       String
   /// Roles permitted to perform it. Checked against the session's live role.
   allowedRoles Role[]
   description  String?
@@ -776,14 +825,35 @@ model Completion {
   descriptionAr    String
   descriptionEn    String?
 
+  /// Which part of the file this item is about, so the broker's screen can
+  /// group corrections the way they will be made rather than as one flat list.
+  category CompletionCategory @default(OTHER)
+
+  /// The specific field, where the item is about form data rather than a
+  /// document — `entity.paidUpCapital`, `contract.3.contractValue`. Lets the
+  /// portal link the item straight to the input that has to change.
+  fieldKey String?
+
+  /// What the applicant must actually *do*. `descriptionAr` says what is wrong;
+  /// this says what would make it right. They are different sentences and the
+  /// paper process conflates them, which is why "استيفاء" is so often returned
+  /// twice for the same item.
+  requiredCorrectionAr String?
+  requiredCorrectionEn String?
+
+  /// The requirement this item rests on — "REQ-REG-030", "D578 Article 2".
+  /// An item with no basis in the documented requirements is itself a signal;
+  /// see 00-VISION §5 signal 16.
+  legalReference String?
+
   status CompletionStatus @default(REQUESTED)
 
   requestedByUserId String
-  requestedBy       User   @relation("CompletionRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  requestedBy       User     @relation("CompletionRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
   requestedAt       DateTime @default(now())
 
   resolvedByUserId String?
-  resolvedBy       User?   @relation("CompletionResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: Restrict)
+  resolvedBy       User?     @relation("CompletionResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: Restrict)
   resolvedAt       DateTime?
   /// A waiver must say why. Waiving without a reason is not possible.
   resolutionReason String?
@@ -822,7 +892,7 @@ model Declaration {
   textAr         String
   textEn         String?
 
-  affirmed   Boolean
+  affirmed      Boolean
   /// Some declarations carry a qualification — declaration 10 names an
   /// employer where the agent is a public-sector employee, for instance.
   qualification String?
@@ -867,7 +937,7 @@ model PowerOfAttorney {
 
   /// REQ-REG-041 — the declaration that the POA remains in force and the
   /// principal remains alive, as at the date it was made.
-  stillValidDeclaredAt DateTime?
+  stillValidDeclaredAt     DateTime?
   principalAliveDeclaredAt DateTime?
 
   applications Application[]
@@ -896,8 +966,8 @@ model BrokerageContract {
   registration   Registration? @relation(fields: [registrationId], references: [id], onDelete: Restrict)
 
   /// REQ-REG-030 — client name in both scripts is required by the form.
-  clientNameAr String
-  clientNameEn String?
+  clientNameAr      String
+  clientNameEn      String?
   clientNationality String?
 
   /// Authentication reference from الشهر العقاري, an embassy, or a consulate,
@@ -919,7 +989,7 @@ model BrokerageContract {
   governorate        Governorate?
 
   /// REQ-REG-064 — cessation of activity notified within thirty days.
-  ceasedAt DateTime?
+  ceasedAt            DateTime?
   cessationNotifiedAt DateTime?
 
   signals Signal[]
@@ -1084,7 +1154,7 @@ model ExaminationRecord {
   signedAt       DateTime?
 
   reviewerUserId String?
-  reviewer       User?   @relation("ExaminationReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
+  reviewer       User?     @relation("ExaminationReviewer", fields: [reviewerUserId], references: [id], onDelete: Restrict)
   reviewerNote   String?
   reviewSignedAt DateTime?
 
@@ -1154,7 +1224,7 @@ model FeeRecord {
   totalAmount Decimal @db.Decimal(18, 2)
 
   recordedByUserId String
-  recordedBy       User   @relation("FeeRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
+  recordedBy       User     @relation("FeeRecordedBy", fields: [recordedByUserId], references: [id], onDelete: Restrict)
   recordedAt       DateTime @default(now())
 
   lines FeeLine[]
@@ -1213,22 +1283,22 @@ model CardIssuance {
   document   Document? @relation(fields: [documentId], references: [id], onDelete: Restrict)
 
   issuedByUserId String
-  issuedBy       User   @relation("CardIssuedBy", fields: [issuedByUserId], references: [id], onDelete: Restrict)
+  issuedBy       User     @relation("CardIssuedBy", fields: [issuedByUserId], references: [id], onDelete: Restrict)
   issuedAt       DateTime @default(now())
 
   // ── Step 6, delivery ────────────────────────────────────────────────────
   /// The serial in the delivery ledger (سجل التسليم).
-  deliverySerial   String?   @unique
-  deliveredToName  String?
-  deliveredAt      DateTime?
+  deliverySerial    String?   @unique
+  deliveredToName   String?
+  deliveredAt       DateTime?
   deliveredByUserId String?
-  deliveredBy       User?    @relation("CardDeliveredBy", fields: [deliveredByUserId], references: [id], onDelete: Restrict)
+  deliveredBy       User?     @relation("CardDeliveredBy", fields: [deliveredByUserId], references: [id], onDelete: Restrict)
 
   /// REQ-REG-050 step 5 — "recipient acknowledges the renewal date and the
   /// obligation to print the number on all output". Two separate
   /// acknowledgements because they are two separate obligations, and because
   /// REQ-REG-061 is enforced against the second one.
-  renewalDateAcknowledged     Boolean @default(false)
+  renewalDateAcknowledged      Boolean @default(false)
   numberObligationAcknowledged Boolean @default(false)
 
   createdAt      DateTime  @default(now())
@@ -1254,21 +1324,21 @@ model FileHandlingRecord {
 
   // ── Step 7, data (مدير إدارة البيانات) ──────────────────────────────────
   dataExtractedByUserId String?
-  dataExtractedBy       User?   @relation("FileDataExtractedBy", fields: [dataExtractedByUserId], references: [id], onDelete: Restrict)
+  dataExtractedBy       User?     @relation("FileDataExtractedBy", fields: [dataExtractedByUserId], references: [id], onDelete: Restrict)
   dataExtractedAt       DateTime?
   dataNote              String?
 
   // ── Step 8, archive (رئيس قسم الملفات) ──────────────────────────────────
-  archivedByUserId String?
-  archivedByUser   User?   @relation("FileArchivedBy", fields: [archivedByUserId], references: [id], onDelete: Restrict)
-  filedAt          DateTime?
+  archivedByUserId  String?
+  archivedByUser    User?     @relation("FileArchivedBy", fields: [archivedByUserId], references: [id], onDelete: Restrict)
+  filedAt           DateTime?
   /// The page count entered in the archive register, checked against the count
   /// the registry clerk recorded at intake. A mismatch is the point of asking.
-  pageCount        Int?
+  pageCount         Int?
   /// The serial and alphabetical registers the file is indexed in.
-  serialRegisterNo   String?
-  alphabeticalIndex  String?
-  fileReference      String?
+  serialRegisterNo  String?
+  alphabeticalIndex String?
+  fileReference     String?
 
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -1364,10 +1434,10 @@ model Inspection {
   inspectorUserId String
   inspector       User   @relation("InspectionInspector", fields: [inspectorUserId], references: [id], onDelete: Restrict)
 
-  status      InspectionStatus @default(SCHEDULED)
-  scheduledOn DateTime
-  conductedOn DateTime?
-  isFieldVisit Boolean @default(false)
+  status       InspectionStatus @default(SCHEDULED)
+  scheduledOn  DateTime
+  conductedOn  DateTime?
+  isFieldVisit Boolean          @default(false)
 
   /// The checklist rule-set version used, so a past inspection stays
   /// re-explainable against the controls in force at the time.
@@ -1440,10 +1510,10 @@ model Document {
 
   /// SHA-256 of the bytes, lowercase hex. The content-addressed storage key is
   /// derived from this, so identical bytes are stored exactly once.
-  sha256      String
-  storageKey  String
-  sizeBytes   Int
-  mimeType    String
+  sha256           String
+  storageKey       String
+  sizeBytes        Int
+  mimeType         String
   originalFilename String?
 
   /// Supersession chain. A new version points at the one it replaces; the
@@ -1454,7 +1524,7 @@ model Document {
   version              Int       @default(1)
 
   uploadedByUserId String
-  uploadedBy       User   @relation(fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+  uploadedBy       User     @relation(fields: [uploadedByUserId], references: [id], onDelete: Restrict)
   uploadedAt       DateTime @default(now())
 
   completions   Completion[]
@@ -1510,9 +1580,11 @@ model Signal {
 
   detectedAt DateTime @default(now())
 
-  disposedByUserId String?
-  disposedBy       User?   @relation("SignalDisposedBy", fields: [disposedByUserId], references: [id], onDelete: Restrict)
-  disposedAt       DateTime?
+  notifications Notification[]
+
+  disposedByUserId  String?
+  disposedBy        User?     @relation("SignalDisposedBy", fields: [disposedByUserId], references: [id], onDelete: Restrict)
+  disposedAt        DateTime?
   /// Mandatory on dismissal. A signal cannot be closed silently.
   dispositionReason String?
 
@@ -1539,13 +1611,13 @@ model Signal {
 /// rules, even after a decree amends them in October. This is not a nicety —
 /// it is what makes a decision defensible to an inspector."
 model RuleSet {
-  id          String @id @default(cuid())
+  id          String  @id @default(cuid())
   code        String
   version     Int
   description String?
 
   /// The instrument this encodes — "D578 Article 2", "RC §خامساً".
-  legalSource String?
+  legalSource    String?
   /// The REQ-* IDs from 01-LEGAL-REFERENCE.md this rule set implements.
   requirementIds String[]
 
@@ -1553,7 +1625,7 @@ model RuleSet {
   effectiveTo   DateTime?
 
   publishedByUserId String?
-  publishedBy       User?   @relation(fields: [publishedByUserId], references: [id], onDelete: Restrict)
+  publishedBy       User?    @relation(fields: [publishedByUserId], references: [id], onDelete: Restrict)
   publishedAt       DateTime @default(now())
 
   items         RuleItem[]
@@ -1581,7 +1653,7 @@ model RuleItem {
 
   key      String
   /// Ordering for checklists and declaration lists, where sequence matters.
-  position Int     @default(0)
+  position Int    @default(0)
 
   /// The rule's content. Thresholds, bands, wording, periods — all here, and
   /// nowhere in the TypeScript.
@@ -1596,6 +1668,321 @@ model RuleItem {
   @@unique([ruleSetId, key])
   @@index([ruleSetId, position])
   @@map("rule_item")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Reference numbers
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// The counter behind every reference number the register issues.
+///
+/// Replaces `MAX(SUBSTRING(number FROM n))` over the table being numbered.
+/// That worked, and was wrong in two ways that only show under load and only
+/// after a few years: the maximum of a *text* column orders `2026/10000`
+/// before `2026/9999`, so the ten-thousandth registration of a year would have
+/// been handed a number already in use; and the read-then-write needed an
+/// advisory lock held across the caller's whole transaction to be safe at all.
+///
+/// One `UPDATE ... RETURNING` on a single row is atomic on its own. Two clerks
+/// allocating at the same instant serialise on that row, not on a lock the
+/// caller has to remember to take, and the value returned is an integer that
+/// keeps counting past 9,999 into five digits and beyond.
+///
+/// Year-scoped, because the numbers are: `2026/0001` restarts each January.
+model NumberSeries {
+  id String @id @default(cuid())
+
+  /// TEMPORARY, REGISTRATION, DELIVERY.
+  series String
+  year   Int
+
+  /// The last value handed out. The next allocation returns this plus one.
+  lastValue Int @default(0)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@unique([series, year])
+  @@map("number_series")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Appointments — the counter, as a bookable thing
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A bookable period at a counter. REQ-REG-050 steps 1 and 6 both have the
+/// applicant attending in person; this is that attendance, scheduled.
+///
+/// `capacity` rather than a boolean, because a counter that can take three
+/// people in a half hour is the normal case, and modelling it as three separate
+/// slots makes the day's schedule unreadable. `bookedCount` is maintained
+/// inside the booking transaction under a row lock, and a CHECK constraint in
+/// the migration refuses `bookedCount > capacity` — so "two brokers cannot take
+/// the same place" holds even if the booking code is ever wrong.
+model AppointmentSlot {
+  id String @id @default(cuid())
+
+  purpose AppointmentPurpose
+
+  /// Stored as instants. The counter runs on Africa/Cairo time and the screens
+  /// render it there; the database stays in UTC, as everything else does.
+  startsAt DateTime
+  endsAt   DateTime
+
+  /// Where to come. Free text, because GOEIC's counters are named on paper and
+  /// are not enumerable.
+  locationAr String
+  locationEn String?
+
+  capacity    Int @default(1)
+  /// Denormalised deliberately: the constraint that makes double-booking
+  /// impossible has to be checkable by the database, and a count of related
+  /// rows is not.
+  bookedCount Int @default(0)
+
+  /// Withdrawn by the Authority — a public holiday, a closed counter. Existing
+  /// bookings are not destroyed; they are cancelled with a reason and the
+  /// applicants are told.
+  closedAt     DateTime?
+  closedReason String?
+
+  createdByUserId String?
+  createdBy       User?   @relation("SlotCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  appointments Appointment[]
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([purpose, startsAt])
+  @@index([startsAt])
+  @@map("appointment_slot")
+}
+
+/// One applicant's place in a slot.
+///
+/// A partial unique index in the migration enforces the other half of "one
+/// place, one broker": an application holds at most one live booking per
+/// purpose at a time. Cancelled and rescheduled rows stay, because the history
+/// of who was booked when is exactly what preserving attendance history means.
+model Appointment {
+  id String @id @default(cuid())
+
+  slotId String
+  slot   AppointmentSlot @relation(fields: [slotId], references: [id], onDelete: Restrict)
+
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+
+  brokerEntityId String
+  brokerEntity   BrokerEntity @relation(fields: [brokerEntityId], references: [id], onDelete: Restrict)
+
+  purpose AppointmentPurpose
+  status  AppointmentStatus  @default(BOOKED)
+
+  /// Who is coming, and how to reach them if the counter has to move.
+  attendeeName  String
+  attendeePhone String?
+
+  bookedByUserId String
+  bookedBy       User     @relation("AppointmentBookedBy", fields: [bookedByUserId], references: [id], onDelete: Restrict)
+  bookedAt       DateTime @default(now())
+
+  cancelledAt       DateTime?
+  cancelledReason   String?
+  cancelledByUserId String?
+  cancelledBy       User?     @relation("AppointmentCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
+
+  /// Set on the booking that replaced this one, so a reschedule is a chain and
+  /// not an erasure.
+  rescheduledToId String?      @unique
+  rescheduledTo   Appointment? @relation("AppointmentReschedule", fields: [rescheduledToId], references: [id], onDelete: Restrict)
+  rescheduledFrom Appointment? @relation("AppointmentReschedule")
+
+  /// Recorded at the counter. Attendance is a fact about the appointment, not a
+  /// penalty: nothing in the Controls or D578 sets a sanction for missing one,
+  /// and this platform invents none.
+  attendanceRecordedAt       DateTime?
+  attendanceRecordedByUserId String?
+  attendanceRecordedBy       User?     @relation("AppointmentAttendance", fields: [attendanceRecordedByUserId], references: [id], onDelete: Restrict)
+
+  reminderSentAt DateTime?
+
+  notifications Notification[]
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([applicationId, status])
+  @@index([slotId, status])
+  @@index([brokerEntityId])
+  @@index([status, bookedAt])
+  @@map("appointment")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Registration lifecycle
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Append-only log of every change to a registration's standing.
+///
+/// The application has `ApplicationEvent`; a registration outlives the
+/// application that produced it and changes standing for reasons that have
+/// nothing to do with any application — a validity period running out, a
+/// suspension, a cancellation. Those need the same trail, and putting them on
+/// ApplicationEvent would attribute a 2031 lapse to a 2026 application.
+model RegistrationEvent {
+  id String @id @default(cuid())
+
+  registrationId String
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+
+  action    String
+  fromState RegistrationStatus?
+  toState   RegistrationStatus
+
+  /// Null where the scheduled sweep acted rather than a person. An event with
+  /// no actor is the system saying so plainly, rather than borrowing a name.
+  actorUserId String?
+  actor       User?   @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+  actorRole   Role?
+
+  reason    String?
+  ipAddress String?
+  userAgent String?
+
+  ruleSetVersions Json?
+
+  occurredAt DateTime @default(now())
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([registrationId, occurredAt])
+  @@map("registration_event")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Notifications
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// The record that a notification was sent. Not an outbox.
+///
+/// 02-SYSTEM-ARCHITECTURE §4 rules out the predecessor's outbox — a table of
+/// pending messages an administrator had to open and copy links out of by hand.
+/// This is the opposite artefact. It is written *after* the provider has taken
+/// the message, and it carries no body, no link, and no token. Someone reading
+/// every row learns who was told what happened and when, which is what an
+/// inspector needs, and cannot use it to reach anybody's account.
+///
+/// `dedupeKey` is what stops the register mailing an applicant twice for one
+/// event. It is unique, so a second attempt fails at the database rather than
+/// relying on the caller to check first.
+model Notification {
+  id String @id @default(cuid())
+
+  /// The business event, not the template — APPLICATION_RETURNED, CARD_ISSUED.
+  eventKey String
+  channel  NotificationChannel @default(EMAIL)
+  status   NotificationStatus  @default(SENT)
+
+  recipientUserId String?
+  recipient       User?   @relation(fields: [recipientUserId], references: [id], onDelete: Restrict)
+  /// As addressed. Kept even where the user row later changes address, because
+  /// the question an inspector asks is where the message actually went.
+  recipientEmail  String
+
+  /// Subjects only. They name the event and carry nothing confidential.
+  subjectAr String
+  subjectEn String
+
+  applicationId String?
+  application   Application? @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+
+  registrationId String?
+  registration   Registration? @relation(fields: [registrationId], references: [id], onDelete: Restrict)
+
+  signalId String?
+  signal   Signal? @relation(fields: [signalId], references: [id], onDelete: Restrict)
+
+  /// The provider's id for the message, where it gave one. What you quote to
+  /// the provider when an applicant says nothing arrived.
+  providerMessageId String?
+  /// Why it did not go. Never the message body.
+  failureReason     String?
+
+  dedupeKey String @unique
+
+  sentAt DateTime @default(now())
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  archivedAt     DateTime?
+  retentionUntil DateTime?
+  legalHold      Boolean   @default(false)
+
+  @@index([eventKey, sentAt])
+  @@index([recipientUserId, sentAt])
+  @@index([applicationId, sentAt])
+  @@index([status, sentAt])
+  @@map("notification")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Abuse limiting
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// One counter per caller per protected route.
+///
+/// In the database rather than in memory because the deployment target is
+/// serverless: an in-process counter on Vercel limits one warm function
+/// instance and nothing else, so a caller gets the limit multiplied by however
+/// many instances the platform decided to run. That is not a rate limit; it is
+/// the appearance of one.
+///
+/// The row is updated in place when its window rolls over rather than being
+/// replaced, so the table is bounded by the number of distinct callers seen and
+/// never needs a delete — which is what lets it exist at all in a product whose
+/// second rule is that nothing is deleted.
+model RateLimitBucket {
+  id String @id @default(cuid())
+
+  /// The protected thing: sign-in, sign-up, reset, verify, upload.
+  scope      String
+  /// Who is being counted — an address, or an email for credential routes.
+  /// Hashed by the caller, never the raw value: this table must not become a
+  /// list of who tried to sign in and from where.
+  identifier String
+
+  windowStartedAt DateTime
+  count           Int      @default(0)
+
+  /// Set when the caller trips the limit, so a supervisor can see refusals
+  /// without the table having to hold every attempt.
+  lastRefusedAt DateTime?
+  refusedCount  Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([scope, identifier])
+  @@index([windowStartedAt])
+  @@map("rate_limit_bucket")
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1640,7 +2027,7 @@ model AuditEvent {
   ruleSetVersions Json?
   /// Anything else the action needs to evidence, already redacted of content
   /// that must not be retained.
-  payload Json?
+  payload         Json?
 
   /// SHA-256 hex of the previous row's `hash`; 64 zeros for the genesis row.
   prevHash String
@@ -1669,9 +2056,9 @@ model LegalHold {
   entityType String
   entityId   String
 
-  reason      String
+  reason         String
   placedByUserId String
-  placedBy       User   @relation(fields: [placedByUserId], references: [id], onDelete: Restrict)
+  placedBy       User     @relation(fields: [placedByUserId], references: [id], onDelete: Restrict)
   placedAt       DateTime @default(now())
 
   liftedAt     DateTime?
