@@ -78,6 +78,27 @@ const ACCOUNTS: Array<{
     note: 'The portal side — touch targets, one thing per screen.',
   },
   {
+    email: 'clerk@osool.test',
+    name: 'Dev Registry Clerk',
+    nameAr: 'موظف السجل (تجريبي)',
+    role: 'REGISTRY_CLERK',
+    note: 'Intake counter — receives, checks, assigns. Runs the appointment desk.',
+  },
+  {
+    email: 'issuer@osool.test',
+    name: 'Dev Card Issuer',
+    nameAr: 'مصدر البطاقات (تجريبي)',
+    role: 'CARD_ISSUER',
+    note: 'Fees, numbering, card, handover.',
+  },
+  {
+    email: 'aml@osool.test',
+    name: 'Dev AML Supervisor',
+    nameAr: 'مشرف مكافحة غسل الأموال (تجريبي)',
+    role: 'AML_SUPERVISOR',
+    note: 'The only role that sees integrity signals and their evidence.',
+  },
+  {
     email: 'suspended@osool.test',
     name: 'Dev Suspended Officer',
     nameAr: 'حساب موقوف (تجريبي)',
@@ -133,7 +154,7 @@ async function main() {
       // script reconciles rather than recreates. The password is left alone
       // unless --reset is passed, since resetting it is a real credential
       // change and should be asked for.
-      const status = account.role === 'REGISTRY_CLERK' ? 'SUSPENDED' : 'ACTIVE'
+      const status = account.email.startsWith('suspended@') ? 'SUSPENDED' : 'ACTIVE'
       await db.user.update({
         where: { id: existing.id },
         data: { role: account.role, status, nameAr: account.nameAr },
@@ -159,7 +180,7 @@ async function main() {
       throw new Error(`Could not create ${account.email}`)
     }
 
-    const status = account.role === 'REGISTRY_CLERK' ? 'SUSPENDED' : 'ACTIVE'
+    const status = account.email.startsWith('suspended@') ? 'SUSPENDED' : 'ACTIVE'
 
     await db.user.update({
       where: { id: created.user.id },

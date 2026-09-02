@@ -108,17 +108,56 @@ export const auth = betterAuth({
      * password was set. That is not a state any employee could get themselves
      * out of, and no administrator could either.
      *
-     * An ordinary forgotten-password reset lands here too and must change
-     * nothing: an ACTIVE account stays ACTIVE, and — this is the important one
-     * — a SUSPENDED account is not quietly reinstated by its holder resetting
-     * their own password. Only the PENDING_ACTIVATION transition is applied.
+     * An ordinary forgotten-password reset lands here too, and changes exactly
+     * two things: every session for the account is ended, and the reset is
+     * audited. What it must never change is the account's standing — an ACTIVE
+     * account stays ACTIVE, and, the important one, a SUSPENDED account is not
+     * quietly reinstated by its holder resetting their own password. Only the
+     * PENDING_ACTIVATION transition below is conditional on status.
      */
     onPasswordReset: async ({ user }) => {
       const record = await db.user.findUnique({
         where: { id: user.id },
         select: { status: true, role: true, emailVerified: true },
       })
-      if (record?.status !== 'PENDING_ACTIVATION') return
+      if (!record) return
+
+      /*
+       * Every session for this account ends here, whichever kind of reset this
+       * was.
+       *
+       * The reason a person resets a password they cannot remember is very
+       * often that somebody else has been using it. Leaving the existing
+       * sessions alive would mean the reset changed the lock while the intruder
+       * was still inside the building — they keep a valid cookie until it
+       * expires on its own, and the one action the account holder could take to
+       * evict them silently does not.
+       *
+       * Deliberately before the audit write, so the count of what was revoked
+       * is a fact the audit event can carry rather than an intention. And
+       * deliberately unconditional: an ACTIVE officer resetting a forgotten
+       * password is the ordinary case, and it is exactly the case that needs
+       * this.
+       */
+      const revoked = await db.session.deleteMany({ where: { userId: user.id } })
+
+      await recordAuditEvent({
+        action: 'ACCOUNT_PASSWORD_RESET',
+        entityType: 'User',
+        entityId: user.id,
+        // No session exists to attribute this to — the holder proved who they
+        // are by possessing the one-time link, and that is what is recorded.
+        actorUserId: user.id,
+        actorRole: record.role,
+        actorLabel: `${user.email} (account holder)`,
+        fromState: record.status,
+        toState: record.status,
+        reason:
+          'The account holder set a new password using a one-time link sent to their registered email address. Any sessions that existed were ended.',
+        payload: { email: user.email, role: record.role, sessionsRevoked: revoked.count },
+      })
+
+      if (record.status !== 'PENDING_ACTIVATION') return
 
       await db.user.update({
         where: { id: user.id },

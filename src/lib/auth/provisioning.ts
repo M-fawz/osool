@@ -4,6 +4,8 @@ import { auth } from './index'
 import { db } from '@/lib/db'
 import { env } from '@/lib/env'
 import { recordAuditEvent } from '@/lib/audit'
+import type { EmailResult } from '@/lib/email'
+import { notify } from '@/lib/notifications'
 import { GOVERNMENT_ROLES, isGovernmentRole, roleLabel } from './roles'
 import { captureIssuedLinks } from './link-capture'
 
@@ -42,7 +44,7 @@ export interface ProvisionResult {
   userId: string
   email: string
   role: Role
-  emailDriver: 'console' | 'resend' | 'manual'
+  emailDriver: EmailResult['driver']
   emailId: string | null
   /**
    * The activation link, and only where the deployment has no outbound mail.
@@ -346,11 +348,75 @@ export async function suspendAccount(
   })
   if (!user) throw new ProvisioningError('No such account.', 'NOT_FOUND')
 
+  /*
+   * An administrator cannot suspend themselves.
+   *
+   * Not a paternalism: the account that performs the suspension loses access
+   * on its very next request, mid-flow, with no way to undo what it has just
+   * done. Combined with the last-administrator rule below, doing it by accident
+   * is how a deployment ends up with nobody who can create an account.
+   */
+  if (input.userId === actor.userId) {
+    throw new ProvisioningError(
+      'An administrator cannot suspend their own account. You would lose access on your next request, and could not reverse it. Ask a second administrator.',
+      'SELF_SUSPENSION',
+    )
+  }
+
+  /*
+   * …and the last one standing cannot be suspended at all.
+   *
+   * §4 puts every account operation behind SYSTEM_ADMIN and nothing else:
+   * creating accounts, assigning roles, reactivating. Suspending the last
+   * active administrator therefore locks the Authority out of its own
+   * administration permanently — no screen in the product can recover from it,
+   * and the only remedy is a hand-written UPDATE against production, which is
+   * exactly the class of operation this system exists to make unnecessary.
+   *
+   * Counted at the moment of the write rather than read beforehand, so two
+   * administrators suspending each other simultaneously cannot both pass.
+   */
+  if (user.role === 'SYSTEM_ADMIN') {
+    const remaining = await db.user.count({
+      where: {
+        role: 'SYSTEM_ADMIN',
+        status: 'ACTIVE',
+        archivedAt: null,
+        id: { not: input.userId },
+      },
+    })
+
+    if (remaining === 0) {
+      throw new ProvisioningError(
+        'This is the last active system administrator. Suspending it would leave nobody able to create accounts, assign roles, or reverse the suspension. Provision and activate a second administrator first.',
+        'LAST_ADMINISTRATOR',
+      )
+    }
+  }
+
   await db.$transaction(async (tx) => {
     await tx.user.update({
       where: { id: input.userId },
       data: { status: 'SUSPENDED', suspendedAt: new Date(), suspendedReason: input.reason },
     })
+
+    /*
+     * Revoke every live session.
+     *
+     * §4 control 3 says a suspension takes effect on the next request, and it
+     * does — `getSession` re-reads status from the database every time, so the
+     * suspended holder is refused. But their session row survives, and a
+     * session row is a bearer credential: if the account is reinstated for an
+     * unrelated reason a month later, a token that was in an attacker's hands
+     * the whole time starts working again.
+     *
+     * Sessions are one of exactly two things this product deletes, and the
+     * Session model says why: "a revoked session must not be resurrectable".
+     * The audit event above records the suspension, so the permanent record
+     * survives the token. no-delete-allowed: ephemeral credential, and the fact
+     * of the revocation is written to the audit trail first.
+     */
+    const revoked = await tx.session.deleteMany({ where: { userId: input.userId } })
 
     await recordAuditEvent(
       {
@@ -365,10 +431,23 @@ export async function suspendAccount(
         reason: input.reason,
         ipAddress: actor.ipAddress ?? null,
         userAgent: actor.userAgent ?? null,
-        payload: { email: user.email, role: user.role },
+        payload: { email: user.email, role: user.role, sessionsRevoked: revoked.count },
       },
       tx,
     )
+  })
+
+  // Told after the commit, and told plainly: what happened, why, and that
+  // nothing of theirs has been deleted. An account that stops working with no
+  // explanation is the single most alarming thing this system can do to
+  // somebody, and silence is not a security measure here — the holder already
+  // knows they are locked out.
+  await notify({
+    event: 'ACCOUNT_SUSPENDED',
+    subject: {
+      accountChange: { userId: input.userId, reason: input.reason },
+      extra: { at: Date.now() },
+    },
   })
 }
 
@@ -418,5 +497,13 @@ export async function reactivateAccount(
       },
       tx,
     )
+  })
+
+  await notify({
+    event: 'ACCOUNT_REINSTATED',
+    subject: {
+      accountChange: { userId: input.userId, reason: input.reason },
+      extra: { at: Date.now() },
+    },
   })
 }

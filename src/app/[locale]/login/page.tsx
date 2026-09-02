@@ -61,6 +61,19 @@ export default async function LoginPage({ params }: { params: Promise<{ locale: 
                 who: tBlocked('whoHeading'),
               }}
             />
+
+            {/* The way out of a lockout. Placed under the form rather than
+                beside the password field so it cannot be mistaken for part of
+                the credential entry, and kept a plain link because it is a
+                navigation, not the action this screen is for. */}
+            <p className="mt-5 text-center text-xs text-ink-faint">
+              <Link
+                href="/forgot-password"
+                className="underline underline-offset-2 hover:text-ink"
+              >
+                {t('forgot')}
+              </Link>
+            </p>
           </div>
         </div>
 

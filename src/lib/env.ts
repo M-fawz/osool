@@ -121,8 +121,14 @@ const schema = z.object({
    *     stored, and the link is shown to exactly one person at exactly the
    *     moment they performed the action that created it.
    *   · `console` — one developer, one machine. Refused in production below.
+   *   · `capture` — the automated tests. Holds messages in memory so a test can
+   *     assert on what would have been sent. Refused in production below.
+   *
+   * Only `resend` is a valid production setting, and the check below says why:
+   * `manual` cannot deliver to a self-registering broker, because there is no
+   * administrator in that loop to hand a link to.
    */
-  EMAIL_PROVIDER: z.enum(['console', 'resend', 'manual']).default('console'),
+  EMAIL_PROVIDER: z.enum(['console', 'resend', 'manual', 'capture']).default('console'),
   RESEND_API_KEY: z.string().optional().default(''),
   EMAIL_FROM: z.string().min(3).default('Osool <no-reply@osool.gov.eg>'),
 
@@ -231,12 +237,69 @@ export const isDev = env.NODE_ENV === 'development'
 // on a read-only filesystem, so `local` storage there does not degrade — it
 // throws on the first upload, later and less legibly than this does.
 if (isProduction) {
+  /*
+   * Two kinds of production, and only one of them is a deployment.
+   *
+   * `next build` always sets NODE_ENV=production, including the build a
+   * developer runs before `npm start` to check the production bundle on their
+   * own machine. Nothing there is emailed to anyone and nothing is uploaded
+   * that has to survive; refusing to start would block the very check this
+   * guard exists to support, and the developer's only way past it would be to
+   * weaken the guard.
+   *
+   * The URL rule below already draws exactly this distinction and says so. The
+   * faults are now collected the same way: on a host they refuse the boot, off
+   * a host they warn loudly and let the check proceed. What must not happen —
+   * a real deployment quietly running with a console mailer or a disk that
+   * disappears on redeploy — is unchanged, because a real deployment is on a
+   * host.
+   */
+  const hosted = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
+
   const productionFaults: string[] = []
   if (env.EMAIL_PROVIDER === 'console') {
     productionFaults.push(
       'EMAIL_PROVIDER=console in production: activation emails would never reach anyone. ' +
         'Use resend (a real provider), or manual if this deployment genuinely has no outbound ' +
         'mail and the administrator hands activation links over out of band.',
+    )
+  }
+  if (env.EMAIL_PROVIDER === 'capture') {
+    productionFaults.push(
+      'EMAIL_PROVIDER=capture in production: messages would be held in memory and never sent. ' +
+        'It exists for the automated tests. Set EMAIL_PROVIDER=resend.',
+    )
+  }
+  /*
+   * `manual` is refused in production, and this is the fix for a real dead end
+   * rather than a tidiness rule.
+   *
+   * The driver was built for one situation: a SYSTEM_ADMIN provisions a
+   * government account, and the one-time link is handed straight back to that
+   * administrator on screen (src/lib/auth/link-capture.ts). Nobody is locked
+   * out, because the person who caused the link to be issued is standing there
+   * holding it.
+   *
+   * That reasoning does not survive contact with the other half of §4:
+   * "Broker accounts self-register … because the supervised population is large
+   * and must be able to onboard without contacting the Authority." A broker
+   * signing up alone at midnight has no administrator in the loop. With
+   * `manual`, their verification message is discarded, `requireEmailVerification`
+   * then refuses every sign-in, and there is no screen anywhere in the product —
+   * not even an administrator's — that can retrieve the link. The account is
+   * created, permanently unusable, and neither the broker nor the Authority can
+   * do anything about it.
+   *
+   * A register whose sign-up endpoint accepts registrations nobody can complete
+   * is worse than one with no sign-up endpoint at all. So: production sends
+   * real mail, or production does not start.
+   */
+  if (env.EMAIL_PROVIDER === 'manual') {
+    productionFaults.push(
+      'EMAIL_PROVIDER=manual in production: brokers self-register (02-SYSTEM-ARCHITECTURE §4), ' +
+        'and a self-registering broker has no administrator to hand their verification link to. ' +
+        'Their message would be discarded and their account left permanently unable to sign in. ' +
+        'Set EMAIL_PROVIDER=resend and RESEND_API_KEY.',
     )
   }
   if (env.EMAIL_PROVIDER === 'resend' && !env.RESEND_API_KEY) {
@@ -258,7 +321,6 @@ if (isProduction) {
    * refusal is keyed on being on a host; off a host it is a warning, which is
    * all the situation warrants.
    */
-  const hosted = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
   for (const [name, value] of [
     ['APP_URL', env.APP_URL],
     ['BETTER_AUTH_URL', env.BETTER_AUTH_URL],
@@ -274,6 +336,16 @@ if (isProduction) {
     }
   }
   if (productionFaults.length) {
-    throw new Error(`Refusing to start in production:\n${productionFaults.map((f) => `  · ${f}`).join('\n')}`)
+    const detail = productionFaults.map((f) => `  · ${f}`).join('\n')
+
+    if (hosted) {
+      throw new Error(`Refusing to start in production:\n${detail}`)
+    }
+
+    console.warn(
+      `[osool] This production build is running with development drivers:\n${detail}\n` +
+        '  This is fine for a local check of the production bundle on your own machine.\n' +
+        '  On a hosted deployment each of these refuses the boot outright.',
+    )
   }
 }
