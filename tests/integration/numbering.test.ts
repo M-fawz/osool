@@ -5,6 +5,7 @@ import {
   allocateRegistrationNumber,
   allocateTemporaryNumber,
 } from '@/lib/applications/numbering'
+import { reserveYearAsDate, reserveYears } from '../support/fixtures'
 
 /**
  * Phase 9 — reference numbers under concurrency.
@@ -16,15 +17,19 @@ import {
  * needs the counter driven past the boundary.
  */
 
-/** A far-future year, so these tests never touch the live 2026 counters. */
-function isolatedYear(): Date {
-  const year = 3000 + Math.floor(Math.random() * 900)
-  return new Date(Date.UTC(year, 5, 1))
-}
+/**
+ * A far-future year, so these tests never touch the live 2026 counters.
+ *
+ * Reserved, not drawn at random. `reserveYears` in the fixtures explains why at
+ * length: because nothing is ever deleted, a random year collides with an
+ * earlier run's leftovers eventually, and the failure rate rises with the age of
+ * the database rather than staying constant.
+ */
+const isolatedYear = reserveYearAsDate
 
 describe('allocation under concurrency', () => {
   it('hands out 50 unique registration numbers to 50 simultaneous callers', async () => {
-    const now = isolatedYear()
+    const now = await isolatedYear()
 
     const numbers = await Promise.all(
       Array.from({ length: 50 }, () =>
@@ -40,7 +45,7 @@ describe('allocation under concurrency', () => {
   })
 
   it('keeps the three series independent of one another', async () => {
-    const now = isolatedYear()
+    const now = await isolatedYear()
 
     const [temporary, registration, delivery] = await Promise.all([
       db.$transaction((tx) => allocateTemporaryNumber(tx, now)),
@@ -57,7 +62,7 @@ describe('allocation under concurrency', () => {
 
 describe('the four-digit boundary', () => {
   it('counts from 9,999 into five digits without repeating or truncating', async () => {
-    const now = isolatedYear()
+    const now = await isolatedYear()
     const year = now.getUTCFullYear()
 
     await db.numberSeries.create({
@@ -80,7 +85,10 @@ describe('the four-digit boundary', () => {
 
 describe('year scoping', () => {
   it('restarts each January rather than running on from the year before', async () => {
-    const base = isolatedYear().getUTCFullYear()
+    // Two consecutive years, both reserved: this test uses `base` and
+    // `base + 1`, and reserving only the first is what made it the most
+    // frequent casualty of the old helper.
+    const base = await reserveYears(2)
 
     const first = await db.$transaction((tx) =>
       allocateRegistrationNumber(tx, new Date(Date.UTC(base, 11, 31))),
@@ -91,5 +99,47 @@ describe('year scoping', () => {
 
     expect(first).toBe(`${base}/0001`)
     expect(second).toBe(`${base + 1}/0001`)
+  })
+})
+
+/**
+ * The regression guard for the flake itself.
+ *
+ * The old helper drew a year at random from a fixed range and asserted nothing
+ * about it. These are the invariants it did not have, and could not have: they
+ * are what makes the isolation a property of the design rather than of how many
+ * times the suite has been run before.
+ */
+describe('year reservation', () => {
+  it('never returns a year that any earlier run has already counted in', async () => {
+    const base = await reserveYears(1)
+
+    // Every year the reservation handed back must be untouched by the
+    // allocators — no `lastValue` above zero anywhere in the block.
+    const used = await db.numberSeries.findMany({
+      where: { year: base, lastValue: { gt: 0 } },
+    })
+    expect(used).toEqual([])
+
+    // …and the first number it hands out is genuinely the first.
+    const first = await db.$transaction((tx) =>
+      allocateRegistrationNumber(tx, new Date(Date.UTC(base, 5, 1))),
+    )
+    expect(first).toBe(`${base}/0001`)
+  })
+
+  it('hands out disjoint blocks to successive callers', async () => {
+    const a = await reserveYears(2)
+    const b = await reserveYears(2)
+
+    // b must start after a's whole block, not merely differ from its first year
+    // — overlapping by one is exactly how the year-scoping test used to break.
+    expect(b).toBeGreaterThan(a + 1)
+  })
+
+  it('is monotonic, so the guarantee survives any number of runs', async () => {
+    const first = await reserveYears(1)
+    const second = await reserveYears(1)
+    expect(second).toBeGreaterThan(first)
   })
 })

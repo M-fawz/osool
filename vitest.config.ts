@@ -28,6 +28,20 @@ export default defineConfig({
   },
   test: {
     globals: false,
+    /*
+     * Every run writes a report to disk as well as to the terminal.
+     *
+     * A previous session lost a failure because the only record of it was
+     * scrollback. A suite whose result exists only in a terminal buffer has not
+     * really been run — nobody can be shown the failure afterwards, and "it was
+     * green on my machine" is unanswerable. `.proof/` is gitignored, so these
+     * accumulate locally and never enter the repository.
+     */
+    reporters: [
+      'default',
+      ['json', { outputFile: '.proof/test-reports/results.json' }],
+      ['junit', { outputFile: '.proof/test-reports/results.xml' }],
+    ],
     // Integration files run one at a time. They share one database and several
     // of them deliberately contend on the same rows and advisory locks; running
     // files in parallel would make the concurrency tests assert against each

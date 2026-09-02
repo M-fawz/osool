@@ -247,3 +247,60 @@ export async function makeSubmittableApplication(): Promise<{
 
   return { user, entity, application }
 }
+
+/**
+ * A block of calendar years no run has ever used, for the numbering tests.
+ *
+ * ── Why this exists ───────────────────────────────────────────────────────
+ *
+ * The numbering tests need a year whose counters start at zero, and they used
+ * to get one by picking at random from a 900-year range:
+ *
+ *     const year = 3000 + Math.floor(Math.random() * 900)   // the old way
+ *
+ * That is isolation by hope, and it decays. Because nothing is ever deleted,
+ * every `number_series` row a run creates survives it, so the pool of years
+ * that are still pristine shrinks with every run the database has ever seen.
+ * Each run burns roughly five of the 900. Sooner or later a run draws a year an
+ * earlier run already counted in, the counter is non-zero, and an assertion of
+ * `…/0001` gets `…/0002`.
+ *
+ * That is the whole of the "intermittent" failure: it is not intermittent, it
+ * is a function of how old the database is. A fresh one always passes, which is
+ * exactly why it was closed as unreproducible.
+ *
+ * ── What this does instead ────────────────────────────────────────────────
+ *
+ * Takes the next block *above every year any run has ever used*, and claims it
+ * with marker rows so a second call in the same run cannot overlap the first.
+ * Collision is impossible by construction rather than improbable, and it stays
+ * impossible however many times the suite runs against the same database.
+ *
+ * `count` is the number of *consecutive* years the caller needs. The year
+ * scoping test needs two — a December and the following January — and the old
+ * helper only ever reserved the one it returned, which is why that test was the
+ * most frequent to fail.
+ */
+export async function reserveYears(count = 1): Promise<number> {
+  // 3000 and above is the test range; the register's real counters are in the
+  // 2020s and are never touched by this.
+  const [row] = await db.$queryRaw<{ max: number | null }[]>`
+    SELECT MAX("year") AS max FROM "number_series" WHERE "year" >= 3000
+  `
+  const base = Math.max(3000, (row?.max ?? 2999) + 1)
+
+  await db.numberSeries.createMany({
+    data: Array.from({ length: count }, (_, i) => ({
+      series: `RESERVED-${ns()}`,
+      year: base + i,
+      lastValue: 0,
+    })),
+  })
+
+  return base
+}
+
+/** The same block, as a `Date` the allocators will read the year off. */
+export async function reserveYearAsDate(): Promise<Date> {
+  return new Date(Date.UTC(await reserveYears(1), 5, 1))
+}
