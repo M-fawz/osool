@@ -40,9 +40,25 @@ Updated as work happens, not at the end. If context is lost, this file plus
 
 ## Phase 2 — correctness closure
 
-Not started. Gated on confirmation of the priority order.
+In progress.
 
-Queue as proposed (baseline §7):
+| Item | State | Commit | Evidence |
+|---|---|---|---|
+| Flaky test (numbering) — root-caused and fixed | done | `f6f9b43` | 3 fail/10 before → 20 pass/20 after; ADR 0001 |
+| Second accumulation failure (notifications) | done | `d57cb9c` | permanent failure (5/5) → per-run schema; ADR 0002 |
+| Capture driver silently dropping messages | done | `d57cb9c` | ceiling that throws, nothing discarded |
+| Full suite 20 consecutive runs | **done** | — | `.proof/suite2/run-1..20.log`, 78 passed each |
+| Broker list pagination caller | done | `d975f0b` | 4 contract tests; browser proof deferred to Phase 3 |
+| `test:unit` gating CI on an empty set | done | `f89596f` | `tests/unit/` created; `ci` runs full suite; 92 tests |
+| F-12 printed-card hard-coded periods | done | `3ce423b` | 4 of 6 tests fail before fix, all pass after |
+| SEC-4 written acceptance | done | pending commit | `SECURITY-ADVISORY-ACCEPTANCE.md`, per-chain reachability |
+| Retention lock / legal hold | **next** | | user decision: implement both |
+| `verifyStoredDocument` — wire or delete | open | | |
+| Rule-set caching | open | | |
+| Audit chain incremental verification + growth ADR | open | | |
+| Refusal handling for thrown auth errors | open | | |
+
+Original queue (baseline §7):
 - [x] **Gate zero:** production exposure — checked read-only, project no longer
       exists. SEC-1/F-02 SUPERSEDED, F-01 stays OPEN. Provisioning fix carried
       into Phase 4 as a fixed requirement.
