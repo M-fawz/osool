@@ -402,4 +402,118 @@ export async function verifyChain(
   }
 }
 
+
+// ── Checkpointed verification ───────────────────────────────────────────────
+
+/** The action a verification checkpoint is recorded under. */
+export const CHAIN_CHECKPOINT_ACTION = 'AUDIT_CHAIN_VERIFIED'
+
+export interface IncrementalVerification extends ChainVerification {
+  /** The checkpoint this run started from, or null if it had to start at 1. */
+  fromCheckpointSeq: bigint | null
+  /** Why a full walk happened, when one did. */
+  fellBackBecause: 'NO_CHECKPOINT' | 'CHECKPOINT_HASH_CHANGED' | null
+  /** The seq of the checkpoint written by this run, if it wrote one. */
+  wroteCheckpointSeq: bigint | null
+}
+
+/**
+ * Verify the chain from the last checkpoint rather than from event 1.
+ *
+ * ── The problem ───────────────────────────────────────────────────────────
+ *
+ * The full sweep re-hashes every event ever recorded. Measured on this
+ * development trail: 6,255 events in 1,007 ms, about 161 microseconds each.
+ * That is fine now and is not a fixed cost — this product audits reads as well
+ * as writes, so the trail grows with *use*, and the sweep gets slower every day
+ * the register is used. At a million events it is a couple of minutes; at ten
+ * million it is most of an hour.
+ *
+ * ── The checkpoint ────────────────────────────────────────────────────────
+ *
+ * A successful verification appends an ordinary audit event recording the
+ * sequence number and head hash it verified through. The next run finds that
+ * event, confirms the stored hash at that sequence still matches what the
+ * checkpoint recorded, and verifies only forward from there.
+ *
+ * The checkpoint lives *in the chain it describes*, deliberately: it needs no
+ * new table, it inherits the append-only guarantees of everything else here,
+ * and an attempt to move a checkpoint is itself an audit event.
+ *
+ * ── What this proves, and what it does not ────────────────────────────────
+ *
+ * It proves nothing has been altered **since** the checkpoint.
+ *
+ * It does **not** prove the trail before the checkpoint is sound. Someone who
+ * altered an old event without recomputing every hash after it would leave the
+ * stored hash at the checkpoint unchanged — so the checkpoint still matches and
+ * this run still passes, while a break sits earlier in the trail. Recomputing
+ * the hashes forward *would* change the stored hash at the checkpoint and be
+ * caught, so this is not useless; it is simply narrower than a full walk.
+ *
+ * Therefore the full sweep does not go away. This is the check that can afford
+ * to run often; `verifyChain()` with no bounds remains the one that proves
+ * nothing was removed, and it must stay on a schedule. Saying otherwise would
+ * be exactly the sort of overstated assurance this trail exists to avoid.
+ */
+export async function verifyChainSince(
+  options: { client?: Tx | typeof db; writeCheckpoint?: boolean; actorLabel?: string } = {},
+): Promise<IncrementalVerification> {
+  const client = options.client ?? db
+
+  const checkpoint = await client.auditEvent.findFirst({
+    where: { action: CHAIN_CHECKPOINT_ACTION },
+    orderBy: { seq: 'desc' },
+    select: { seq: true, payload: true },
+  })
+
+  let fromCheckpointSeq: bigint | null = null
+  let fellBackBecause: IncrementalVerification['fellBackBecause'] = null
+
+  if (!checkpoint) {
+    fellBackBecause = 'NO_CHECKPOINT'
+  } else {
+    const recorded = checkpoint.payload as { throughSeq?: string; headHash?: string } | null
+    const throughSeq = recorded?.throughSeq ? BigInt(recorded.throughSeq) : null
+    const headHash = recorded?.headHash ?? null
+
+    const actual = throughSeq
+      ? await client.auditEvent.findFirst({ where: { seq: throughSeq }, select: { hash: true } })
+      : null
+
+    if (throughSeq && headHash && actual?.hash === headHash) {
+      fromCheckpointSeq = throughSeq
+    } else {
+      // The trail moved underneath a checkpoint that claimed otherwise. Fall
+      // back to the full walk rather than trusting a starting point that has
+      // already been contradicted.
+      fellBackBecause = 'CHECKPOINT_HASH_CHANGED'
+    }
+  }
+
+  const result = await verifyChain(
+    fromCheckpointSeq === null ? { client } : { client, fromSeq: fromCheckpointSeq + 1n },
+  )
+
+  let wroteCheckpointSeq: bigint | null = null
+  if (result.ok && options.writeCheckpoint !== false && result.lastSeq && result.lastHash) {
+    const written = await recordAuditEvent({
+      action: CHAIN_CHECKPOINT_ACTION,
+      entityType: 'AuditEvent',
+      entityId: String(result.lastSeq),
+      actorUserId: null,
+      actorRole: null,
+      actorLabel: options.actorLabel ?? 'Scheduled verification (no human actor)',
+      reason:
+        fromCheckpointSeq === null
+          ? 'The full audit chain was verified and found intact.'
+          : `The audit chain was verified intact from ${fromCheckpointSeq + 1n} onwards.`,
+      payload: { throughSeq: String(result.lastSeq), headHash: result.lastHash },
+    })
+    wroteCheckpointSeq = written.seq
+  }
+
+  return { ...result, fromCheckpointSeq, fellBackBecause, wroteCheckpointSeq }
+}
+
 export { canonicalAuditPayload, canonicalJson } from './canonical'

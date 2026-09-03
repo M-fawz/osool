@@ -158,6 +158,48 @@ async function main(): Promise<void> {
     })
   }
 
+  // ── Audit chain, since the last checkpoint ─────────────────────────────────
+  if (wanted('audit-since')) {
+    heading('Audit chain — since the last checkpoint')
+    await step('audit-since', async () => {
+      /*
+       * The check that can afford to run often. It verifies forward from the
+       * last recorded checkpoint, so its cost tracks how much has happened
+       * rather than how much has ever happened.
+       *
+       * It does not replace `audit`. Verifying from a checkpoint proves nothing
+       * has been altered *since* that point; only the full walk proves nothing
+       * has been removed from the trail before it. Both belong on a schedule,
+       * at different frequencies.
+       */
+      const { verifyChainSince } = await import('../src/lib/audit')
+
+      if (dry) {
+        const result = await verifyChainSince({ writeCheckpoint: false })
+        console.log(`  would check     ${result.eventsChecked} event(s)`)
+        console.log(`  from checkpoint ${result.fromCheckpointSeq ?? '— none, would walk in full'}`)
+        return
+      }
+
+      const result = await verifyChainSince()
+      console.log(`  scope           ${result.scope}`)
+      console.log(`  from checkpoint ${result.fromCheckpointSeq ?? '— none'}`)
+      if (result.fellBackBecause) console.log(`  full walk because ${result.fellBackBecause}`)
+      console.log(`  events checked  ${result.eventsChecked}`)
+      console.log(`  new checkpoint  ${result.wroteCheckpointSeq ?? '— none written'}`)
+
+      if (!result.ok) {
+        console.error(`\n  CHAIN BROKEN — ${result.breaks.length} break(s):`)
+        for (const problem of result.breaks.slice(0, 20)) {
+          console.error(`      ${JSON.stringify(problem, (_, v) => (typeof v === 'bigint' ? v.toString() : v))}`)
+        }
+        throw new Error('the audit chain did not verify')
+      }
+
+      console.log('  INTACT since the checkpoint')
+    })
+  }
+
   // ── Audit chain, in full ───────────────────────────────────────────────────
   if (wanted('audit')) {
     heading('Audit chain — full verification')
