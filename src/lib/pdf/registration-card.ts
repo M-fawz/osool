@@ -26,6 +26,22 @@ export interface RegistrationCardData {
   addressAr: string
   commercialRegisterNo: string
   issuedOn: Date
+
+  /**
+   * The statutory periods printed on the card, from the rule set in force.
+   *
+   * These used to be literals here — `90` in an arithmetic expression, and both
+   * periods again as Arabic words in the obligation text. A decree amending
+   * either one would have needed a code change and a deployment to correct a
+   * document the register hands to the public, which is exactly what CLAUDE.md
+   * rule 4 exists to prevent: thresholds are versioned data, never constants.
+   *
+   * They are supplied by the caller, which already resolves the obligation
+   * periods rule set for the validity period, so the card and the lifecycle
+   * sweep can never disagree about when renewal falls due.
+   */
+  renewalWindowDays: number
+  changeNotificationDays: number
 }
 
 const fmtDate = (d: Date) =>
@@ -155,10 +171,10 @@ export function registrationCardHtml(data: RegistrationCardData): string {
   <div class="obligation">
     <p><strong>التزامات المقيَّد:</strong></p>
     <p>١. إثبات رقم القيد على جميع الأوراق والمكاتبات والإعلانات الصادرة عنه أو بالنيابة عنه.</p>
-    <p>٢. تقديم طلب التجديد قبل انتهاء مدة القيد بتسعين يوماً، أي بحلول <span class="ltr">${fmtDate(
-      new Date(data.validTo.getTime() - 90 * 24 * 60 * 60 * 1000),
+    <p>٢. تقديم طلب التجديد قبل انتهاء مدة القيد بـ<span class="ltr">${data.renewalWindowDays}</span> يوماً، أي بحلول <span class="ltr">${fmtDate(
+      new Date(data.validTo.getTime() - data.renewalWindowDays * 24 * 60 * 60 * 1000),
     )}</span>.</p>
-    <p>٣. إخطار الهيئة بأي تغيير في بيانات المنشأة أو في أي عقد وساطة مقيد خلال ثلاثين يوماً.</p>
+    <p>٣. إخطار الهيئة بأي تغيير في بيانات المنشأة أو في أي عقد وساطة مقيد خلال <span class="ltr">${data.changeNotificationDays}</span> يوماً.</p>
     <p>٤. عدم مزاولة أي عمل من أعمال الوساطة بعد زوال أي شرط من شروط القيد.</p>
   </div>
 

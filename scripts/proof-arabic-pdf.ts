@@ -55,6 +55,11 @@ async function main() {
     addressAr: '١٤ شارع طلعت حرب، وسط البلد، القاهرة',
     commercialRegisterNo: '118427',
     issuedOn: new Date('2026-03-01T00:00:00Z'),
+    // The proof renders a specimen, so it states the periods explicitly rather
+    // than resolving a rule set. The card itself no longer holds either as a
+    // constant — see RegistrationCardData.
+    renewalWindowDays: 90,
+    changeNotificationDays: 30,
   }
 
   heading('Generating the registration card')

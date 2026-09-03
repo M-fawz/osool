@@ -667,7 +667,12 @@ export async function performIssueCard(
   const [categories, types, obligations] = await Promise.all([
     ruleSet<{ labelAr: string; labelEn: string }>('BROKER_CATEGORY', { asOf }),
     ruleSet<{ labelAr: string; labelEn: string }>('BROKER_TYPE', { asOf }),
-    ruleSet<{ validityYears?: number }>('OBLIGATION_PERIODS', { asOf }),
+    // The card prints the renewal and change-notification periods as well as
+    // using the validity period, so all three are read off the same resolution.
+    ruleSet<{ validityYears?: number; daysBeforeExpiry?: number; days?: number }>(
+      'OBLIGATION_PERIODS',
+      { asOf },
+    ),
   ])
 
   const issuedOn = new Date()
@@ -704,6 +709,12 @@ export async function performIssueCard(
       addressAr: entity.headOfficeAddress,
       commercialRegisterNo: entity.commercialRegisterNo,
       issuedOn,
+      // From the same rule set that gave us the validity period, so the card's
+      // stated renewal date and the lifecycle sweep that acts on it cannot
+      // disagree — and a decree amending either period is a configuration
+      // change, not a deployment. CLAUDE.md rule 4.
+      renewalWindowDays: obligations.byKey.get('RENEWAL_WINDOW')?.payload.daysBeforeExpiry ?? 90,
+      changeNotificationDays: obligations.byKey.get('CHANGE_NOTIFICATION')?.payload.days ?? 30,
     }),
   )
 
