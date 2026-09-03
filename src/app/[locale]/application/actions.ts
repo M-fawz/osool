@@ -10,6 +10,7 @@ import { encryptPii, piiFingerprint } from '@/lib/crypto/pii'
 import { submitApplication, withdrawApplication } from '@/lib/applications/draft'
 import { notYourApplication, precondition } from '@/lib/applications/refusals'
 import type { ActorContext } from '@/lib/applications/transition'
+import { archive } from '@/lib/retention'
 import { resolveDeclarations } from '@/lib/rules/declarations'
 import type { RuleViolation } from '@/lib/rules/violation'
 import {
@@ -628,25 +629,44 @@ export async function archiveContractAction(
 
   const { session, application } = opened
 
-  await db.$transaction(async (tx) => {
-    const existing = await tx.applicationContractData.findFirst({
-      where: { id: contractId, applicationId: application.id, archivedAt: null },
-    })
-    if (!existing) return
-
-    await tx.applicationContractData.update({
-      where: { id: existing.id },
-      data: { archivedAt: new Date() },
-    })
-
-    await auditDraftWrite(
-      session,
-      application.id,
-      'contracts',
-      { archivedContractId: existing.id, clientNameAr: existing.clientNameAr },
-      tx,
-    )
+  const existing = await db.applicationContractData.findFirst({
+    where: { id: contractId, applicationId: application.id, archivedAt: null },
   })
+  if (!existing) return { ok: true, next: `/application/${application.id}/contracts` }
+
+  /*
+   * Through `archive()`, which is the only writer of `archivedAt` — it checks
+   * for a legal hold before writing and records the archiving in the audit
+   * trail. `npm run audit:one-archiver` fails the build if anything sets that
+   * column directly, so the retention controls cannot be walked around by a
+   * future call site that simply forgets them.
+   *
+   * No `retention` class is passed, deliberately. This is a contract line on a
+   * draft the applicant has not yet submitted: none of REQ-AML-030's six clocks
+   * has started, because there is no relationship to have ended. Naming a class
+   * here would assert a statutory period over a record that has not entered one.
+   */
+  const archived = await archive({
+    ref: { entityType: 'ApplicationContractData', entityId: existing.id },
+    actor: actorFrom(session),
+    reason: 'The applicant removed this contract from their draft application.',
+    update: async (tx, archivedAt) => {
+      await tx.applicationContractData.update({
+        where: { id: existing.id },
+        data: { archivedAt },
+      })
+
+      await auditDraftWrite(
+        session,
+        application.id,
+        'contracts',
+        { archivedContractId: existing.id, clientNameAr: existing.clientNameAr },
+        tx,
+      )
+    },
+  })
+
+  if (!archived.ok) return refusal(archived.violation)
 
   return { ok: true, next: `/application/${application.id}/contracts` }
 }

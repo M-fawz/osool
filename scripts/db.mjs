@@ -15,8 +15,10 @@
  *                dependency. No Docker, no admin rights, no system install. The
  *                data directory lives in ./.postgres and is gitignored.
  *
- * Both listen on 127.0.0.1:5433 with identical credentials, so DATABASE_URL is
- * the same either way and nothing downstream can tell the difference.
+ * Both listen on 127.0.0.1 with identical credentials, so DATABASE_URL is the
+ * same either way and nothing downstream can tell the difference. The port is
+ * 5433 unless `OSOOL_DB_PORT` says otherwise — see `DB` below for why that is
+ * worth an environment variable.
  */
 
 import { spawnSync } from 'node:child_process'
@@ -24,14 +26,32 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import net from 'node:net'
+import { loadEnvFile } from './lib/load-env.mjs'
+
+// So `OSOOL_DB_PORT` can live in `.env` beside the DATABASE_URL it must agree
+// with, rather than having to be exported in every shell that runs this.
+loadEnvFile()
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const DATA_DIR = join(ROOT, '.postgres')
 const PID_FILE = join(DATA_DIR, 'osool-embedded.pid')
 
+/**
+ * The local database's address.
+ *
+ * The port is overridable through `OSOOL_DB_PORT` rather than fixed at 5433.
+ * On Windows a killed postmaster can leave its listening socket behind, owned
+ * by a process id that no longer exists: `taskkill` reports "process not
+ * found" while `netstat` still shows the port LISTENING, and every client then
+ * gets a connection that is accepted and goes nowhere. The socket is reclaimed
+ * on reboot, which is not a reasonable thing to require of someone who wants to
+ * run the tests. Moving to a free port costs one environment variable.
+ *
+ * Set it alongside the matching port in `DATABASE_URL`; both must agree.
+ */
 export const DB = {
   host: '127.0.0.1',
-  port: 5433,
+  port: Number(process.env.OSOOL_DB_PORT ?? 5433),
   user: 'osool',
   password: 'osool_dev_password',
   database: 'osool',
@@ -193,6 +213,18 @@ if (!commands[command]) {
 }
 
 commands[command]().catch((error) => {
-  console.error(error.message)
+  // `embedded-postgres` can reject with `undefined`, and reading `.message` off
+  // that replaced the real failure with a TypeError from this line — the one
+  // place that exists to explain what went wrong.
+  console.error(error?.message ?? error ?? 'The command failed without an error message.')
+
+  const stale = join(DATA_DIR, 'data', 'postmaster.pid')
+  if (existsSync(stale)) {
+    console.error(
+      `\nThere is a lock file at ${stale}.\n` +
+        'If no postgres is actually running, it is left over from a killed one and\n' +
+        'the server will refuse to start until it is removed.',
+    )
+  }
   process.exit(1)
 })

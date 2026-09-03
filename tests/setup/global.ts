@@ -82,12 +82,36 @@ export async function setup(): Promise<void> {
 
   // Workers are forked after this returns and inherit the environment, so the
   // assignment above is what puts every test file on the new schema.
-  const run = (command: string, args: string[]) =>
-    execFileSync(command, args, {
-      env: { ...process.env, DATABASE_URL: url },
-      stdio: 'pipe',
-      shell: process.platform === 'win32',
-    })
+  /*
+   * `stdio: 'pipe'` keeps Prisma's chatter out of the test output, but it also
+   * means a failure arrives as a Node error whose `stdout` and `stderr` are raw
+   * Buffers — which print as several hundred integers and tell the reader
+   * nothing. The commonest failure here is simply that the database is not
+   * running, and that deserves the same one-line answer the setup file gives.
+   */
+  const run = (command: string, args: string[]) => {
+    try {
+      return execFileSync(command, args, {
+        env: { ...process.env, DATABASE_URL: url },
+        stdio: 'pipe',
+        shell: process.platform === 'win32',
+      })
+    } catch (error) {
+      const detail = error as { stderr?: Buffer; stdout?: Buffer }
+      const text = [detail.stderr?.toString(), detail.stdout?.toString()]
+        .filter(Boolean)
+        .join('\n')
+        .trim()
+
+      const hint = text.includes('P1001')
+        ? '\n\nThe database is not reachable. Start it with:  npm run db:start'
+        : ''
+
+      throw new Error(
+        `${command} ${args.join(' ')} failed while preparing the test schema.\n\n${text}${hint}`,
+      )
+    }
+  }
 
   run('npx', ['prisma', 'migrate', 'deploy'])
 
