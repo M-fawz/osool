@@ -187,6 +187,93 @@ async function main(): Promise<void> {
     })
   }
 
+  // ── Archive integrity ──────────────────────────────────────────────────────
+  if (wanted('documents')) {
+    heading('Archive integrity — stored documents')
+    await step('documents', async () => {
+      /*
+       * Re-hash what is in the store and confirm each object still matches the
+       * content-addressed key it is filed under. 02-SYSTEM-ARCHITECTURE §7: the
+       * hash is what lets the Authority prove the document reviewed in March is
+       * byte-identical to the one in the archive today — and a hash nobody
+       * recomputes proves nothing at all.
+       *
+       * `verifyStoredDocument` had been written, exported, and never called
+       * from anywhere. It was a documented control that did not run, which is
+       * the same defect as retention lock and legal hold and is fixed the same
+       * way: by giving it a caller on a schedule.
+       */
+      const { db } = await import('../src/lib/db')
+      const { verifyStoredDocument } = await import('../src/lib/storage')
+
+      const documents = await db.document.findMany({
+        where: { archivedAt: null },
+        select: { id: true, storageKey: true, originalFilename: true, sha256: true },
+        orderBy: { createdAt: 'asc' },
+      })
+
+      if (dry) {
+        console.log(`  ${documents.length} document(s) would be re-hashed`)
+        return
+      }
+
+      let checked = 0
+      let missing = 0
+      let mismatched = 0
+      let repointed = 0
+      const problems: { id: string; name: string; detail: string }[] = []
+
+      for (const document of documents) {
+        const name = document.originalFilename ?? '(no filename recorded)'
+        checked += 1
+
+        /*
+         * Two different questions, and both are worth asking.
+         *
+         * `verifyStoredDocument` re-hashes the bytes and compares them to the
+         * key they are filed under — it catches the stored object changing
+         * underneath us. It cannot catch the *row* being repointed at some
+         * other object that is itself internally consistent, because that
+         * object hashes correctly for its own key. Comparing the row's recorded
+         * sha256 against the key closes that second door.
+         */
+        const result = await verifyStoredDocument(document.storageKey)
+
+        if (result.actualHash === null) {
+          missing += 1
+          problems.push({ id: document.id, name, detail: 'not present in the store' })
+        } else if (!result.ok) {
+          mismatched += 1
+          problems.push({ id: document.id, name, detail: `bytes hash to ${result.actualHash}` })
+        }
+
+        if (result.expectedHash && document.sha256 !== result.expectedHash) {
+          repointed += 1
+          problems.push({
+            id: document.id,
+            name,
+            detail: `row records ${document.sha256} but is filed under ${result.expectedHash}`,
+          })
+        }
+      }
+
+      console.log(`  checked         ${checked}`)
+      console.log(`  missing         ${missing}`)
+      console.log(`  hash mismatch   ${mismatched}`)
+      console.log(`  key/row mismatch ${repointed}`)
+
+      if (problems.length > 0) {
+        console.error(`\n  ARCHIVE INTEGRITY FAILED — ${problems.length} finding(s):`)
+        for (const problem of problems.slice(0, 20)) {
+          console.error(`      ${problem.id}  ${problem.name}  ${problem.detail}`)
+        }
+        throw new Error('one or more stored documents did not match their content hash')
+      }
+
+      console.log('  INTACT')
+    })
+  }
+
   console.log(`\n${rule}`)
   console.log(failures === 0 ? 'All sweeps completed.' : `${failures} sweep(s) failed.`)
 
