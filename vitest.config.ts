@@ -19,8 +19,11 @@ import { fileURLToPath } from 'node:url'
  * assert against each other's noise rather than against the code.
  *
  * Nothing here truncates or deletes. It cannot: the delete and truncate guards
- * from the Phase 0 migrations are installed on the development database too.
- * Fixtures are therefore append-only and namespaced per run.
+ * from the Phase 0 migrations are installed on the development database too, and
+ * inside the per-run test schema as well — a test that tries to delete a row
+ * still fails, exactly as production would. Fixtures are append-only within a
+ * run; between runs they do not accumulate, because each run gets its own
+ * schema and drops it afterwards. tests/setup/global.ts explains why.
  */
 export default defineConfig({
   resolve: {
@@ -62,6 +65,9 @@ export default defineConfig({
           name: 'integration',
           include: ['tests/integration/**/*.test.ts'],
           environment: 'node',
+          // One fresh schema for the whole run — see tests/setup/global.ts for
+          // why per-run and not per-file.
+          globalSetup: ['tests/setup/global.ts'],
           setupFiles: ['tests/setup/database.ts'],
           testTimeout: 60_000,
           hookTimeout: 60_000,

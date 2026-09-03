@@ -57,7 +57,24 @@ export interface EmailResult {
  * `capture` never runs anywhere but a test — env.ts refuses it in production.
  */
 const captured: EmailMessage[] = []
-const CAPTURE_LIMIT = 500
+
+/*
+ * A ceiling that shouts, not a ring buffer that forgets.
+ *
+ * This used to keep the newest 500 and silently `shift()` the rest away. That
+ * turns a capacity problem into a false assertion: a test asking "was the
+ * broker told their file arrived?" got `false` — not because the notice was
+ * never sent, but because 603 accumulated registry clerks had pushed it out of
+ * the buffer, and the broker's notice is the one sent first. The test reported
+ * a notification bug that did not exist, and the real cause was invisible from
+ * anything it printed.
+ *
+ * A test double must never quietly discard the evidence a test is about to
+ * assert on. So nothing is dropped; if the volume ever becomes genuinely
+ * unreasonable the run fails loudly and names the reason, which is a far better
+ * outcome than an assertion that is wrong for a reason nobody can see.
+ */
+const CAPTURE_CEILING = 50_000
 
 export function capturedEmails(): readonly EmailMessage[] {
   return captured
@@ -68,8 +85,14 @@ export function clearCapturedEmails(): void {
 }
 
 async function sendViaCapture(message: EmailMessage): Promise<EmailResult> {
+  if (captured.length >= CAPTURE_CEILING) {
+    throw new Error(
+      `The capture driver is holding ${CAPTURE_CEILING} messages. Something is ` +
+        'fanning out further than a test should — check for accumulated fixture ' +
+        'users, since role-addressed notices go to every officer holding the role.',
+    )
+  }
   captured.push(message)
-  if (captured.length > CAPTURE_LIMIT) captured.shift()
   return { driver: 'capture', id: `capture-${captured.length}`, to: message.to }
 }
 
