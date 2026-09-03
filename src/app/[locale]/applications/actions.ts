@@ -1,7 +1,8 @@
 'use server'
 
 import type { BrokerType, ExaminerRecommendation } from '@prisma/client'
-import { requireRole, type Session } from '@/lib/auth/session'
+import { authoriseAction } from '@/lib/auth/guard'
+import { type Session } from '@/lib/auth/session'
 import type { ActorContext } from '@/lib/applications/transition'
 import {
   performArchive,
@@ -55,6 +56,10 @@ function validationFailure(errors: Record<string, string>): WorkflowResult {
   return { ok: false, kind: 'validation', errors }
 }
 
+function refused(violation: RuleViolation): WorkflowResult {
+  return { ok: false, kind: 'refused', violation }
+}
+
 function outcome(result: StepOutcome, next: string): WorkflowResult {
   return result.ok ? { ok: true, next } : { ok: false, kind: 'refused', violation: result.violation }
 }
@@ -85,7 +90,9 @@ export async function recordIntakeAction(
   _previous: WorkflowResult | null,
   formData: FormData,
 ): Promise<WorkflowResult> {
-  const session = await requireRole(['REGISTRY_CLERK'])
+  const auth = await authoriseAction(['REGISTRY_CLERK'])
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
   const applicationId = String(formData.get('applicationId') ?? '')
 
   const parsed = IntakeSchema.safeParse({ pageCount: formData.get('pageCount') })
@@ -101,7 +108,9 @@ export async function assignExaminerAction(
   _previous: WorkflowResult | null,
   formData: FormData,
 ): Promise<WorkflowResult> {
-  const session = await requireRole(['REGISTRY_CLERK'])
+  const auth = await authoriseAction(['REGISTRY_CLERK'])
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
   const applicationId = String(formData.get('applicationId') ?? '')
   const examinerId = String(formData.get('examinerId') ?? '')
 
@@ -119,7 +128,9 @@ export async function saveExaminationAction(
   _previous: WorkflowResult | null,
   formData: FormData,
 ): Promise<WorkflowResult> {
-  const session = await requireRole(['EXAMINER'])
+  const auth = await authoriseAction(['EXAMINER'])
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
   const applicationId = String(formData.get('applicationId') ?? '')
 
   const parsed = ExaminationSchema.safeParse({
@@ -155,7 +166,9 @@ export async function requestCompletionsAction(
   _previous: WorkflowResult | null,
   formData: FormData,
 ): Promise<WorkflowResult> {
-  const session = await requireRole(['EXAMINER'])
+  const auth = await authoriseAction(['EXAMINER'])
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
   const applicationId = String(formData.get('applicationId') ?? '')
 
   const items = parseJsonField(formData, 'items')
@@ -186,7 +199,9 @@ export async function recommendAction(
   _previous: WorkflowResult | null,
   formData: FormData,
 ): Promise<WorkflowResult> {
-  const session = await requireRole(['EXAMINER'])
+  const auth = await authoriseAction(['EXAMINER'])
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
   const applicationId = String(formData.get('applicationId') ?? '')
 
   return outcome(await performRecommend(actorFrom(session), { applicationId }), '/examination')
@@ -198,7 +213,9 @@ export async function decideAction(
   _previous: WorkflowResult | null,
   formData: FormData,
 ): Promise<WorkflowResult> {
-  const session = await requireRole(['REVIEWER'])
+  const auth = await authoriseAction(['REVIEWER'])
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
   const applicationId = String(formData.get('applicationId') ?? '')
 
   const parsed = ReviewDecisionSchema.safeParse({
@@ -223,7 +240,9 @@ export async function recordFeesAction(
   _previous: WorkflowResult | null,
   formData: FormData,
 ): Promise<WorkflowResult> {
-  const session = await requireRole(['CARD_ISSUER', 'DATA_MANAGER'])
+  const auth = await authoriseAction(['CARD_ISSUER', 'DATA_MANAGER'])
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
   const applicationId = String(formData.get('applicationId') ?? '')
 
   const lines = parseJsonField(formData, 'lines')
@@ -252,7 +271,9 @@ export async function issueCardAction(
   _previous: WorkflowResult | null,
   formData: FormData,
 ): Promise<WorkflowResult> {
-  const session = await requireRole(['CARD_ISSUER'])
+  const auth = await authoriseAction(['CARD_ISSUER'])
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
   const applicationId = String(formData.get('applicationId') ?? '')
 
   return outcome(
@@ -265,7 +286,9 @@ export async function recordDeliveryAction(
   _previous: WorkflowResult | null,
   formData: FormData,
 ): Promise<WorkflowResult> {
-  const session = await requireRole(['CARD_ISSUER'])
+  const auth = await authoriseAction(['CARD_ISSUER'])
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
   const applicationId = String(formData.get('applicationId') ?? '')
 
   const parsed = DeliverySchema.safeParse({
@@ -288,7 +311,9 @@ export async function recordDataExtractionAction(
   _previous: WorkflowResult | null,
   formData: FormData,
 ): Promise<WorkflowResult> {
-  const session = await requireRole(['DATA_MANAGER'])
+  const auth = await authoriseAction(['DATA_MANAGER'])
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
   const applicationId = String(formData.get('applicationId') ?? '')
 
   const parsed = DataExtractionSchema.safeParse({ dataNote: formData.get('dataNote') })
@@ -304,7 +329,9 @@ export async function recordArchiveAction(
   _previous: WorkflowResult | null,
   formData: FormData,
 ): Promise<WorkflowResult> {
-  const session = await requireRole(['FILES_HEAD'])
+  const auth = await authoriseAction(['FILES_HEAD'])
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
   const applicationId = String(formData.get('applicationId') ?? '')
 
   const parsed = ArchiveSchema.safeParse({

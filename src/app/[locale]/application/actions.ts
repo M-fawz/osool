@@ -5,7 +5,8 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { recordAuditEvent } from '@/lib/audit'
 import { BROKER_ROLES, roleLabel } from '@/lib/auth/roles'
-import { requireRole, type Session } from '@/lib/auth/session'
+import { authoriseAction } from '@/lib/auth/guard'
+import { type Session } from '@/lib/auth/session'
 import { encryptPii, piiFingerprint } from '@/lib/crypto/pii'
 import { submitApplication, withdrawApplication } from '@/lib/applications/draft'
 import { notYourApplication, precondition } from '@/lib/applications/refusals'
@@ -74,7 +75,9 @@ const EDITABLE_STATES = new Set(['DRAFT', 'AWAITING_COMPLETION'])
 async function openForEditing(applicationId: string): Promise<
   { ok: true; session: Session; application: Application } | { ok: false; result: StepResult }
 > {
-  const session = await requireRole(BROKER_ROLES)
+  const auth = await authoriseAction(BROKER_ROLES)
+  if (!auth.ok) return { ok: false, result: refusal(auth.violation) }
+  const session = auth.session
 
   const application = await db.application.findUnique({ where: { id: applicationId } })
 
@@ -154,7 +157,9 @@ async function auditDraftWrite(
 export async function startApplicationAction(): Promise<
   { ok: true; applicationId: string } | { ok: false; kind: 'refused'; violation: RuleViolation }
 > {
-  const session = await requireRole(BROKER_ROLES)
+  const auth = await authoriseAction(BROKER_ROLES)
+  if (!auth.ok) return { ok: false, kind: 'refused', violation: auth.violation }
+  const session = auth.session
 
   const existingDraft = session.brokerEntityId
     ? await db.application.findFirst({
@@ -811,7 +816,9 @@ export async function withdrawApplicationAction(
   formData: FormData,
 ): Promise<StepResult> {
   const applicationId = String(formData.get('applicationId') ?? '')
-  const session = await requireRole(BROKER_ROLES)
+  const auth = await authoriseAction(BROKER_ROLES)
+  if (!auth.ok) return refusal(auth.violation)
+  const session = auth.session
 
   const result = await withdrawApplication(actorFrom(session), applicationId)
   if (!result.ok) return refusal(result.violation)

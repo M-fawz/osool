@@ -1,7 +1,8 @@
 'use server'
 
 import { z } from 'zod'
-import { requireRole, type Session } from '@/lib/auth/session'
+import { authoriseAction } from '@/lib/auth/guard'
+import { type Session } from '@/lib/auth/session'
 import type { ActorContext } from '@/lib/applications/transition'
 import { disposeSignal, takeSignalForReview } from '@/lib/signals'
 import { fieldErrors } from '@/lib/validation/application'
@@ -28,6 +29,10 @@ export type SupervisionResult =
   | { ok: false; kind: 'refused'; violation: RuleViolation }
 
 const SUPERVISORY_ROLES = ['AML_SUPERVISOR', 'AUDITOR'] as const
+
+function refused(violation: RuleViolation): SupervisionResult {
+  return { ok: false, kind: 'refused', violation }
+}
 
 function actorFrom(session: Session): ActorContext {
   return {
@@ -56,7 +61,9 @@ export async function takeSignalAction(
   _previous: SupervisionResult | null,
   formData: FormData,
 ): Promise<SupervisionResult> {
-  const session = await requireRole([...SUPERVISORY_ROLES])
+  const auth = await authoriseAction([...SUPERVISORY_ROLES])
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
 
   const parsed = TakeSchema.safeParse({ signalId: formData.get('signalId') })
   if (!parsed.success) return { ok: false, kind: 'validation', errors: fieldErrors(parsed.error) }
@@ -69,7 +76,9 @@ export async function disposeSignalAction(
   _previous: SupervisionResult | null,
   formData: FormData,
 ): Promise<SupervisionResult> {
-  const session = await requireRole([...SUPERVISORY_ROLES])
+  const auth = await authoriseAction([...SUPERVISORY_ROLES])
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
 
   const parsed = DisposeSchema.safeParse({
     signalId: formData.get('signalId'),

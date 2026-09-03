@@ -3,7 +3,8 @@
 import type { AppointmentPurpose } from '@prisma/client'
 import { z } from 'zod'
 import { BROKER_ROLES } from '@/lib/auth/roles'
-import { requireRole, type Session } from '@/lib/auth/session'
+import { authoriseAction } from '@/lib/auth/guard'
+import { type Session } from '@/lib/auth/session'
 import type { ActorContext } from '@/lib/applications/transition'
 import {
   bookAppointment,
@@ -95,7 +96,9 @@ export async function bookAppointmentAction(
   _previous: AppointmentResult | null,
   formData: FormData,
 ): Promise<AppointmentResult> {
-  const session = await requireRole(BROKER_ROLES)
+  const auth = await authoriseAction(BROKER_ROLES)
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
 
   const parsed = BookSchema.safeParse({
     slotId: formData.get('slotId'),
@@ -153,7 +156,9 @@ export async function cancelAppointmentAction(
   _previous: AppointmentResult | null,
   formData: FormData,
 ): Promise<AppointmentResult> {
-  const session = await requireRole([...BROKER_ROLES, 'REGISTRY_CLERK', 'CARD_ISSUER'])
+  const auth = await authoriseAction([...BROKER_ROLES, 'REGISTRY_CLERK', 'CARD_ISSUER'])
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
 
   const parsed = CancelSchema.safeParse({
     appointmentId: formData.get('appointmentId'),
@@ -169,7 +174,9 @@ export async function rescheduleAppointmentAction(
   _previous: AppointmentResult | null,
   formData: FormData,
 ): Promise<AppointmentResult> {
-  const session = await requireRole(BROKER_ROLES)
+  const auth = await authoriseAction(BROKER_ROLES)
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
 
   const parsed = RescheduleSchema.safeParse({
     appointmentId: formData.get('appointmentId'),
@@ -186,7 +193,9 @@ export async function recordAttendanceAction(
   _previous: AppointmentResult | null,
   formData: FormData,
 ): Promise<AppointmentResult> {
-  const session = await requireRole(['REGISTRY_CLERK', 'CARD_ISSUER'])
+  const auth = await authoriseAction(['REGISTRY_CLERK', 'CARD_ISSUER'])
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
 
   const parsed = AttendanceSchema.safeParse({
     appointmentId: formData.get('appointmentId'),
@@ -227,7 +236,9 @@ export async function openSlotsAction(
   _previous: AppointmentResult | null,
   formData: FormData,
 ): Promise<AppointmentResult> {
-  const session = await requireRole(['REGISTRY_CLERK', 'CARD_ISSUER', 'DATA_MANAGER'])
+  const auth = await authoriseAction(['REGISTRY_CLERK', 'CARD_ISSUER', 'DATA_MANAGER'])
+  if (!auth.ok) return refused(auth.violation)
+  const session = auth.session
 
   const parsed = OpenSlotsSchema.safeParse({
     purpose: formData.get('purpose'),

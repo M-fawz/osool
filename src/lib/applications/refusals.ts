@@ -253,3 +253,94 @@ export function precondition(input: {
 }
 
 export { AUTHORITY_AR, AUTHORITY_EN }
+
+// ── When authorisation fails inside a Server Action ─────────────────────────
+
+/**
+ * The refusals for an action whose *authorisation* failed rather than whose
+ * rules did.
+ *
+ * Pages call `guard()` and render a refusal. Server Actions called
+ * `requireRole()`, which throws — and nothing caught it, so the throw escaped
+ * into Next's error boundary and the officer got a generic client error. That
+ * is the bare error 03-DESIGN-DIRECTION §6 forbids, in the one situation where
+ * the user is least equipped to guess what happened.
+ *
+ * It is not a theoretical path. The page rendered because the officer held the
+ * role at the time; the action runs later. An administrator changing a role, a
+ * suspension, or a session expiring between the two is ordinary, and each of
+ * the three deserves its own next step rather than one shrug.
+ */
+export function noLongerPermitted(input: { role: Role }): RuleViolation {
+  const role = roleLabels[input.role]
+  return {
+    code: 'ROLE_NOT_PERMITTED_NOW',
+    severity: 'BLOCKING',
+    requirementIds: ['REQ-REG-050'],
+    legalSource: 'GOEIC workflow — role permissions, 02-SYSTEM-ARCHITECTURE §4',
+    needsCounsel: false,
+    evidence: { role: input.role },
+    ar: {
+      blocked: 'لم يُنفَّذ هذا الإجراء.',
+      why: `صلاحيتك الحالية (${role.ar}) لا تسمح بهذه الخطوة. ربما تغيّرت صلاحيتك بعد فتح هذه الصفحة.`,
+      nextStep: 'أعد تحميل الصفحة لعرض ما تستطيع عمله بصلاحيتك الحالية. لم يتغيّر شيء في الملف.',
+      whoToAsk: AUTHORITY_AR,
+    },
+    en: {
+      blocked: 'This action was not carried out.',
+      why: `Your current role (${role.en}) does not perform this step. Your role may have changed since this page was opened.`,
+      nextStep: 'Reload the page to see what your current role can do. Nothing on the file was changed.',
+      whoToAsk: AUTHORITY_EN,
+    },
+  }
+}
+
+export function sessionNoLongerValid(): RuleViolation {
+  return {
+    code: 'SESSION_NOT_VALID',
+    severity: 'BLOCKING',
+    requirementIds: ['REQ-DPA-002'],
+    legalSource: '02-SYSTEM-ARCHITECTURE §4',
+    needsCounsel: false,
+    evidence: {},
+    ar: {
+      blocked: 'لم يُنفَّذ هذا الإجراء.',
+      why: 'انتهت جلستك، فلم يعد بالإمكان التحقق من هويتك عند تنفيذ هذه الخطوة.',
+      nextStep: 'سجّل الدخول مرة أخرى ثم أعد المحاولة. لم يتغيّر شيء في الملف.',
+      whoToAsk: AUTHORITY_AR,
+    },
+    en: {
+      blocked: 'This action was not carried out.',
+      why: 'Your session has ended, so your identity could not be confirmed when the step was taken.',
+      nextStep: 'Sign in again and retry. Nothing on the file was changed.',
+      whoToAsk: AUTHORITY_EN,
+    },
+  }
+}
+
+export function accountIsSuspended(reason: string | null): RuleViolation {
+  return {
+    code: 'ACCOUNT_SUSPENDED',
+    severity: 'BLOCKING',
+    requirementIds: ['REQ-DPA-002'],
+    legalSource: '02-SYSTEM-ARCHITECTURE §4',
+    needsCounsel: false,
+    evidence: reason ? { reason } : {},
+    ar: {
+      blocked: 'لم يُنفَّذ هذا الإجراء.',
+      why: reason
+        ? `حسابك موقوف حالياً: ${reason}`
+        : 'حسابك موقوف حالياً، والحسابات الموقوفة لا تُجري أي إجراء على الملفات.',
+      nextStep: 'راجع مدير النظام لرفع الإيقاف. لم يتغيّر شيء في الملف.',
+      whoToAsk: AUTHORITY_AR,
+    },
+    en: {
+      blocked: 'This action was not carried out.',
+      why: reason
+        ? `Your account is suspended: ${reason}`
+        : 'Your account is suspended, and a suspended account cannot act on files.',
+      nextStep: 'Ask a system administrator to lift the suspension. Nothing on the file was changed.',
+      whoToAsk: AUTHORITY_EN,
+    },
+  }
+}

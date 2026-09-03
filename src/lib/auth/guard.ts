@@ -1,4 +1,10 @@
 import type { Role } from '@prisma/client'
+import {
+  accountIsSuspended,
+  noLongerPermitted,
+  sessionNoLongerValid,
+} from '@/lib/applications/refusals'
+import type { RuleViolation } from '@/lib/rules/violation'
 import { canSeeCaseData } from './roles'
 import {
   AccountSuspendedError,
@@ -58,3 +64,35 @@ export async function guard(
 }
 
 export { NotAuthorisedError }
+
+/**
+ * Authorisation for a Server Action that produces a *refusal*, not a throw.
+ *
+ * The action counterpart of `guard()`. `requireRole()` throws, which suits code
+ * that wants the exception, and nothing in the action layer caught it — so a
+ * role change, a suspension, or an expired session between rendering a page and
+ * pressing its button escaped into Next's error boundary as a generic client
+ * error. 03-DESIGN-DIRECTION §6 admits no exceptions: this is a refusal like any
+ * other and states what is blocked, why, the next step, and who to ask.
+ *
+ * Every refusal it returns also says "nothing on the file was changed", because
+ * that is the first thing the officer wants to know and the only one they
+ * cannot see for themselves.
+ */
+export async function authoriseAction(
+  allowed: Role[],
+  options: { caseData?: boolean } = {},
+): Promise<{ ok: true; session: Session } | { ok: false; violation: RuleViolation }> {
+  const result = await guard(allowed, options)
+
+  if (result.ok) return { ok: true, session: result.session }
+
+  switch (result.kind) {
+    case 'unauthenticated':
+      return { ok: false, violation: sessionNoLongerValid() }
+    case 'suspended':
+      return { ok: false, violation: accountIsSuspended(result.reason) }
+    case 'forbidden':
+      return { ok: false, violation: noLongerPermitted({ role: result.role }) }
+  }
+}
