@@ -14,7 +14,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "ci": "npm run typecheck && npm run lint && npm run audit:no-deletes && npm run i18n:check && npm run test:unit && npm run build",
+    "ci": "npm run typecheck && npm run lint && npm run audit:no-deletes && npm run i18n:check && npm test && npm run build",
     "setup": "node scripts/setup.mjs",
     "db:start": "node scripts/db.mjs start",
     "db:stop": "node scripts/db.mjs stop",
