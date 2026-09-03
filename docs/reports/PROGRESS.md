@@ -52,9 +52,10 @@ In progress.
 | `test:unit` gating CI on an empty set | done | `f89596f` | `tests/unit/` created; `ci` runs full suite; 92 tests |
 | F-12 printed-card hard-coded periods | done | `3ce423b` | 4 of 6 tests fail before fix, all pass after |
 | SEC-4 written acceptance | done | pending commit | `SECURITY-ADVISORY-ACCEPTANCE.md`, per-chain reachability |
-| Retention lock / legal hold | **next** | | user decision: implement both |
-| `verifyStoredDocument` — wire or delete | open | | |
-| Rule-set caching | open | | |
+| Retention lock / legal hold | done | `5257132` | 12 tests; ADR 0003; one-archiver gate in CI |
+| F-11 `verifyStoredDocument` — wired | done | `f8dc11b` | sweep runs it; 2,016 docs INTACT; 6 tests incl. tamper detection |
+| Local DB port configurable; db.mjs error handling | done | `5257132` | Windows orphaned-socket recovery |
+| Rule-set caching | **next** | | 4 queries per transition |
 | Audit chain incremental verification + growth ADR | open | | |
 | Refusal handling for thrown auth errors | open | | |
 
