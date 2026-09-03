@@ -55,9 +55,10 @@ In progress.
 | Retention lock / legal hold | done | `5257132` | 12 tests; ADR 0003; one-archiver gate in CI |
 | F-11 `verifyStoredDocument` — wired | done | `f8dc11b` | sweep runs it; 2,016 docs INTACT; 6 tests incl. tamper detection |
 | Local DB port configurable; db.mjs error handling | done | `5257132` | Windows orphaned-socket recovery |
-| Rule-set caching | **next** | | 4 queries per transition |
-| Audit chain incremental verification + growth ADR | open | | |
-| Refusal handling for thrown auth errors | open | | |
+| Rule-set caching | done | `daa9b94` | 22.1 ms → 2.3 ms per stamp; 6 equivalence tests |
+| Audit chain checkpointed verification + growth ADR | done | `79e92cf` | 6,255 ev/993 ms → 1 ev/264 ms; ADR 0004; limitation has its own test |
+| Refusal for thrown auth errors in Server Actions | done | `d63ceac` | 21 call sites; structural guard test |
+| Pagination proof at 5,000 rows | **not done** | | 62-row fixture only — see below |
 
 Original queue (baseline §7):
 - [x] **Gate zero:** production exposure — checked read-only, project no longer
@@ -71,9 +72,31 @@ Original queue (baseline §7):
 - [ ] F-12 printed-card hard-coded windows
 - [ ] SEC-4 advisories — upgrade or written acceptance
 
+### Phase 2 — deliberately not done
+
+- **Keyed LRU over resolved rule sets.** `asOf` is a fresh `Date` on nearly every
+  call so memoising by arguments would rarely hit, and a time-bucketed cache
+  trades regulatory-correctness risk for a saving the single-query fix already
+  delivered. Reasoned in `daa9b94`.
+- **The 5,000-row pagination fixture.** The contract is covered at 62 rows
+  (`pagination.test.ts`); the brief asked for 5,000 with the 101st and 4,999th
+  row reachable. Now cheap to add — the per-run schema means a large fixture no
+  longer poisons later runs.
+- **The global audit advisory lock (PERF-2).** Untouched on purpose: changing how
+  the chain is written is a change to the audit algorithm and needs explicit
+  sign-off. Its throughput ceiling remains **unmeasured** — Phase 4, with a load
+  tool. Narrowing fact: public `/verify` writes no audit event, so a public flood
+  cannot serialise an officer's write behind it (read from the route, not load
+  tested).
+- **`next@16` major upgrade.** Advisories accepted in writing instead; see
+  `SECURITY-ADVISORY-ACCEPTANCE.md`.
+- **A screen for placing/lifting a legal hold.** The operations exist and are
+  tested; the officer-facing UI is Phase 5 and is on the not-built list.
+
 ## Phases 3–6
 
-Not started.
+Not started. Phase 3 (browser QA matrix) is the next gate and nothing in it has
+been attempted: **no screen has been rendered in a browser this session.**
 
 ---
 
