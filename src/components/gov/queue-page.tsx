@@ -7,6 +7,7 @@ import type { Locale } from '@/i18n/routing'
 import { PageHeader } from '@/components/ui/panel'
 import { Notice } from '@/components/ui/notice'
 import type { QueueRow } from '@/lib/applications/queues'
+import { readPage } from '@/lib/pagination'
 import { RoleQueue } from './queue'
 
 /**
@@ -16,6 +17,11 @@ import { RoleQueue } from './queue'
  * me" — and the only differences are which role is allowed in, what the heading
  * says, and where a row goes. Writing six pages would have meant six chances
  * for the sticky header, the empty state, or the waiting column to drift.
+ *
+ * The page and the search term come out of the URL here rather than inside the
+ * queue component, because they are properties of the request and this is the
+ * thing holding the request. It also means one place decides how `?page=-4` is
+ * treated — `readPage` clamps it — rather than six.
  */
 export async function QueuePage({
   locale,
@@ -24,6 +30,8 @@ export async function QueuePage({
   lead,
   hrefFor,
   notice,
+  basePath,
+  searchParams,
 }: {
   locale: string
   /** Roles permitted here. The first is the one whose queue is shown. */
@@ -33,6 +41,9 @@ export async function QueuePage({
   hrefFor: (row: QueueRow) => string
   /** A standing fact about this screen — segregation of duties, for instance. */
   notice?: { title: string; body: string }
+  /** Locale-less path for this queue — `/intake`. Paging links are built from it. */
+  basePath: string
+  searchParams: Record<string, string | string[] | undefined>
 }) {
   setRequestLocale(locale)
 
@@ -41,6 +52,10 @@ export async function QueuePage({
 
   const session = gate.session
   const loc = locale as Locale
+
+  const page = readPage(searchParams)
+  const rawSearch = searchParams.q
+  const search = (Array.isArray(rawSearch) ? rawSearch[0] : rawSearch)?.trim() || null
 
   return (
     <Shell locale={loc} session={session}>
@@ -57,6 +72,10 @@ export async function QueuePage({
         actorUserId={session.userId}
         locale={loc}
         hrefFor={hrefFor}
+        page={page}
+        search={search}
+        basePath={basePath}
+        searchParams={searchParams}
       />
     </Shell>
   )
