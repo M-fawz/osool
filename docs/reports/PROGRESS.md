@@ -80,6 +80,40 @@ Everything required to demonstrate Osool end to end.
   is legible in `.proof/screens/after-csp-fix.png`. The browser harness asserts
   it twice so it cannot regress silently.
 
+#### P0.0b — Two rate limiters were running and the wrong one answered
+
+- **Status:** VERIFIED
+- **Completed:** 2026-09-07
+- **Severity:** demo-blocking. Switching roles four times in a row was refused.
+- **Files:** `src/lib/auth/index.ts`
+- **Finding:** Better Auth ships its own rate limiter, on by default in
+  production, with a special rule for `/sign-in*`, `/sign-up*`,
+  `/change-password*` and `/change-email*` of **three requests per ten seconds**,
+  counted **in memory**. This product has its own in
+  `src/lib/security/rate-limit.ts`, and Better Auth's fired first. So the
+  refusal a user actually saw was
+  `{"message":"Too many requests. Please try again later."}` — English only, no
+  reason, no next step, nobody to ask, against a rule in CLAUDE.md that admits
+  no exceptions. Three sign-ins per ten seconds is also not a budget for this
+  product: an office where a clerk, an examiner and a reviewer sign in one after
+  another has spent it. And it counts in memory, which is the reason the
+  database-backed limiter was written in the first place — on a serverless host
+  each instance keeps its own counter.
+- **How it was found:** the browser harness reported reviewer, auditor and
+  administrator as failing, then a different three on the next run. It looked
+  like the register's own limiter working correctly and was written up as such.
+  Signing in as twelve roles eight seconds apart outside the browser reproduced
+  it at exactly **every fourth** attempt — too regular for a budget of forty per
+  five minutes — and the refusal body was not the bilingual one this product
+  sends. That was the tell.
+- **Fix:** `rateLimit: { enabled: false }` on the Better Auth config, so the
+  register's own limiter is the single authority.
+- **Evidence:** before — every 4th of 12 sign-ins refused at 8s spacing. After —
+  **twelve roles 1.5 seconds apart, twelve succeed**. Brute force still refused:
+  six wrong passwords on one account gives 429 with the four-part
+  Arabic-and-English notice stating what is blocked, that the account is *not*
+  suspended, when to retry, and who to contact.
+
 #### P0.1 — Broker self-registration
 
 - **Status:** VERIFIED — driven through a browser end to end
@@ -304,6 +338,24 @@ Everything required to demonstrate Osool end to end.
 - **Why this one:** it is the strongest remaining demonstration screen, it is
   assembled entirely from data that already exists, and it is the natural
   destination for a row somebody has just searched for.
+
+#### P2.1c — The INSPECTOR role has no screen
+
+- **Status:** RAISED, not fixed
+- **Finding:** `INSPECTOR` has a label, sits in `GOVERNMENT_ROLES`, can be
+  provisioned and can sign in — and there is no screen anywhere that admits it.
+  `/supervision` permits `AML_SUPERVISOR`, `AUDITOR` and `ANALYST` only, and the
+  inspector's own subject matter (`Inspection`, `Finding`) is part of the AML
+  cluster that still has no reads and no writes. An inspector signs in and can
+  reach nothing.
+- **Why it was not fixed:** which screens an inspector may see is a regulatory
+  question, and CLAUDE.md rule 3 says a rule with no requirement ID behind it
+  does not go into the code. Adding the role to a guard would have been a guess.
+- **What was done instead:** the browser harness asserts that an inspector is
+  refused **and that the refusal is a proper four-part one**, so the gap is
+  visible and the user experience of it is at least correct. It surfaced only
+  because this session seeded the first `INSPECTOR` account; before that, no
+  account held the role and nothing exercised it.
 
 #### P2.2 — Renewal and amendment applications
 
