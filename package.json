@@ -44,7 +44,8 @@
     "test:integration": "vitest run --project integration",
     "test:watch": "vitest",
     "sweep": "tsx scripts/sweep.ts",
-    "i18n:check": "node scripts/i18n-keys.mjs check"
+    "i18n:check": "node scripts/i18n-keys.mjs check",
+    "qa:browser": "node scripts/qa/browser.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
