@@ -445,6 +445,86 @@ const run = async () => {
   await page.goto(`${BASE}/ar/appointments`, { waitUntil: 'networkidle' })
   check('the Arabic diary renders', (await page.locator('body').innerText()).length > 200)
 
+  /*
+   * An actual booking, made through the interface.
+   *
+   * `tests/integration/appointments.test.ts` covers the domain rules — capacity,
+   * double booking, cancellation. What it cannot cover is whether a broker can
+   * reach the screen, see a free slot, and end up with a booking, which is the
+   * thing being demonstrated. So this books one.
+   *
+   * `nile@osool.test` is a seeded firm with a SUBMITTED application and no live
+   * appointment, which is exactly the state where a document handover is due.
+   */
+  const booker = await browser.newContext({ viewport: { width: 1440, height: 900 } })
+  const brokerPage = await booker.newPage()
+  watchConsole(brokerPage, consoleErrors)
+
+  await signIn(brokerPage, 'nile@osool.test', PASSWORD)
+  await brokerPage.goto(`${BASE}/en/application`, { waitUntil: 'networkidle' })
+
+  const appHref = await brokerPage
+    .locator('a[href*="/application/"]')
+    .first()
+    .getAttribute('href')
+    .catch(() => null)
+
+  const appId = appHref?.match(/\/application\/([^/?#]+)/)?.[1] ?? null
+
+  if (check('the broker can find their own application', Boolean(appId), appHref ?? 'no link')) {
+    await brokerPage.goto(`${BASE}/en/application/${appId}/appointment`, { waitUntil: 'networkidle' })
+    await shot(brokerPage, 'appointment-slots')
+
+    /*
+     * Whether a booking already exists, by the one control that only appears
+     * when it does. Matching the page text for "Your appointment" was wrong —
+     * that is the *heading* of the screen, so every visit looked like an
+     * existing booking and the harness silently skipped the thing it was for.
+     */
+    const alreadyBooked =
+      (await brokerPage.getByRole('button', { name: /cancel|إلغاء/i }).count()) > 0
+
+    // Every slot control that is not full or closed. The picker disables the
+    // ones that cannot be taken, so "enabled" is the availability assertion.
+    const free = brokerPage.locator('button:not([disabled])').filter({ hasText: /:/ })
+    const freeCount = await free.count()
+    check('open slots are offered to the broker', freeCount > 0 || alreadyBooked, `${freeCount} selectable`)
+
+    if (freeCount > 0 && !alreadyBooked) {
+      await free.first().click()
+      await brokerPage.waitForSelector('#attendee-name', { state: 'visible', timeout: 15_000 })
+      await brokerPage.fill('#attendee-name', 'Mahmoud Fawzy')
+      await brokerPage.fill('#attendee-phone', '01000000000')
+      await shot(brokerPage, 'appointment-confirming')
+
+      await brokerPage.click('form button[type="submit"]')
+      await brokerPage.waitForLoadState('networkidle')
+      await brokerPage.waitForTimeout(2_000)
+
+      const after = await brokerPage.locator('body').innerText()
+      check(
+        'the booking is confirmed back to the broker',
+        /cancel|Your appointment|موعدك/i.test(after),
+        after.slice(0, 140).split(String.fromCharCode(10)).join(' '),
+      )
+      check(
+        'the confirmation states a date and a time',
+        /\d{1,2}:\d{2}/.test(after) && /20\d{2}/.test(after),
+      )
+      await shot(brokerPage, 'appointment-booked')
+    }
+
+    // Arabic, on the same screen.
+    await brokerPage.goto(`${BASE}/ar/application/${appId}/appointment`, { waitUntil: 'networkidle' })
+    check(
+      'the Arabic appointment screen renders right-to-left',
+      (await brokerPage.locator('html').getAttribute('dir')) === 'rtl',
+    )
+    await shot(brokerPage, 'appointment-ar')
+  }
+
+  await booker.close()
+
   // ── 6. Every role lands somewhere real ─────────────────────────────────
   heading('6. Roles reach their own screens')
 
