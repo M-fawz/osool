@@ -17,11 +17,8 @@ const onVercel = Boolean(process.env.VERCEL)
  * Read here rather than at request time because `headers()` runs once, at
  * build/start. `next dev` sets NODE_ENV=development; every build — including
  * the one a developer runs locally before `npm start` — sets production. That
- * is exactly the asymmetry the HSTS note below warns about, and it works in
- * our favour here: the looser development CSP can never be baked into a
- * production build.
+ * is exactly the asymmetry the HSTS note below warns about.
  */
-const isDevelopment = process.env.NODE_ENV === 'development'
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -125,69 +122,38 @@ const nextConfig: NextConfig = {
             : []),
 
           /*
-           * Content Security Policy.
+           * Content Security Policy — set in src/middleware.ts, not here.
            *
-           * The one header that turns a cross-site scripting bug from a total
-           * compromise into a broken image. Everything above narrows what the
-           * browser *may* do with this page; this narrows where its content may
-           * come from at all, which is the control that still holds when
-           * something else has already gone wrong.
+           * It used to be a static header on this block, and in production it
+           * read `script-src 'self'` on the reasoning that only `next dev`
+           * emits inline scripts. The App Router's production output emits a
+           * great many — the `self.__next_f.push(...)` calls carrying the RSC
+           * payload, and the ones that move streamed content out of the hidden
+           * templates it is first written into. The policy blocked all of them,
+           * and every page in the product rendered blank in every browser while
+           * the server answered 200 with correct HTML.
            *
-           * ── Why the policy looks like this ────────────────────────────
+           * A static header cannot carry a nonce, and a nonce is what lets
+           * Next's own scripts run without also admitting an injected one. So
+           * the policy is built per request in the middleware, which is the
+           * only place that can generate one.
            *
-           * `default-src 'self'` and then exceptions, rather than a permissive
-           * base with restrictions bolted on. A register serves its own fonts,
-           * its own scripts, and its own documents; there is no CDN, no
-           * analytics, and no embedded third party anywhere in the product, so
-           * the strict base costs nothing and every exception below had to
-           * earn its place.
-           *
-           *   · `'unsafe-inline'` on style-src — Next.js and Tailwind emit
-           *     inline styles for streamed segments and there is no nonce path
-           *     for them in the App Router today. It is the one concession, and
-           *     it is on styles rather than scripts, which is the difference
-           *     between a defacement and a takeover.
-           *
-           *   · `'unsafe-inline'` on script-src in development only. `next dev`
-           *     injects inline bootstrapping and the React refresh runtime; the
-           *     production bundle does not, and the production policy does not
-           *     allow it. Keying this on NODE_ENV is safe here in a way it was
-           *     not for HSTS above: getting it wrong makes development
-           *     inconvenient, not a browser profile permanently wrong.
-           *
-           *   · `img-src` admits `data:` and `blob:` because the upload screens
-           *     preview a chosen scan before it is sent, and a phone camera
-           *     capture arrives as a blob URL.
-           *
-           *   · `frame-ancestors 'none'` restates X-Frame-Options in the modern
-           *     form. Both are sent: the old header is what some corporate
-           *     proxies still enforce, and clickjacking a government approval
-           *     button is exactly the attack it prevents.
-           *
-           *   · `form-action 'self'` stops an injected form posting a session
-           *     somewhere else, and `base-uri 'none'` stops an injected <base>
-           *     silently repointing every relative URL on the page.
-           *
-           * `object-src 'none'` because this product embeds no plugin content;
-           * the registration card is served as a download, not an <object>.
+           * This block keeps the headers that are genuinely static. The API
+           * routes, which the middleware matcher deliberately excludes, get
+           * their own policy below — they return JSON and need nothing at all.
            */
+        ],
+      },
+      {
+        // JSON, and nothing else. An API response has no scripts, no styles
+        // and no images of its own, so the policy that fits it is the empty
+        // one — and if a route ever starts returning HTML, this is what makes
+        // that visible immediately rather than quietly.
+        source: '/api/:path*',
+        headers: [
           {
             key: 'Content-Security-Policy',
-            value: [
-              "default-src 'self'",
-              isDevelopment
-                ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-                : "script-src 'self'",
-              "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: blob:",
-              "font-src 'self' data:",
-              "connect-src 'self'",
-              "object-src 'none'",
-              "frame-ancestors 'none'",
-              "form-action 'self'",
-              "base-uri 'none'",
-              'upgrade-insecure-requests',
-            ].join('; '),
+            value: "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
           },
         ],
       },
