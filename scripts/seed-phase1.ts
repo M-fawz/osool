@@ -52,20 +52,36 @@ import { announceDemonstrationTarget, requireSeedableTarget } from './lib/demons
 const DEV_PASSWORD = 'DevOnly!Osool2026'
 
 /**
- * The administrator account the project owner signs in with.
+ * An extra administrator account, named by whoever runs the seed.
+ *
+ * This used to be a literal: one person's real address and real password,
+ * committed, and therefore in the git history from `d691022` for good. It is
+ * now read from the environment and is entirely optional — the seed already
+ * creates `admin@osool.test`, which is the account a demonstration actually
+ * signs in with, so nothing depends on this one existing.
  *
  * Its password is set directly rather than through the activation-email path,
  * which is the one deliberate deviation from the real provisioning flow in this
- * script. It exists so a demonstration can begin without a mail round trip, and
- * it must never exist on a deployed system — hence the refusals below, and the
- * warning printed at the end.
+ * script. It exists so a demonstration can begin without a mail round trip.
+ *
+ * Set both variables in the shell for a single run rather than in a file, so
+ * neither is written to disk:
+ *
+ *   OSOOL_ADMIN_EMAIL=… OSOOL_ADMIN_PASSWORD=… npm run seed:phase1
  */
-const OWNER_ADMIN = {
-  email: 'mahmoud.fawzy@osool.gov.eg',
-  name: 'MahmoudFawzy',
-  nameAr: 'محمود فوزي',
-  password: 'MahmoudFawzy@123',
-  role: 'SYSTEM_ADMIN' as const,
+function ownerAdmin() {
+  const email = process.env.OSOOL_ADMIN_EMAIL?.trim()
+  const password = process.env.OSOOL_ADMIN_PASSWORD
+
+  if (!email || !password) return null
+
+  return {
+    email,
+    name: process.env.OSOOL_ADMIN_NAME?.trim() || email.split('@')[0]!,
+    nameAr: process.env.OSOOL_ADMIN_NAME_AR?.trim() || null,
+    password,
+    role: 'SYSTEM_ADMIN' as const,
+  }
 }
 
 /**
@@ -687,8 +703,17 @@ async function main() {
 
   // ── Accounts ────────────────────────────────────────────────────────────
   console.log('Accounts')
-  const admin = await ensureAccount({ ...OWNER_ADMIN, resetPassword: values.reset })
-  console.log(`  ${admin.email.padEnd(30)} SYSTEM_ADMIN    (password set directly)`)
+  const owner = ownerAdmin()
+  if (owner) {
+    const admin = await ensureAccount({
+      ...owner,
+      nameAr: owner.nameAr ?? owner.name,
+      resetPassword: values.reset,
+    })
+    console.log(`  ${admin.email.padEnd(30)} SYSTEM_ADMIN    (password set directly, from the environment)`)
+  } else {
+    console.log('  (no OSOOL_ADMIN_EMAIL set — admin@osool.test is the administrator)')
+  }
 
   const officialsByEmail = new Map<string, User>()
   for (const official of DEMO_OFFICIALS) {
@@ -834,8 +859,8 @@ async function main() {
 
   console.log('\n─────────────────────────────────────────────────────────────────────')
   console.log('DEMONSTRATION ACCOUNTS — PUBLISHED PASSWORDS. NOT A REGISTER OF RECORD.')
-  console.log(`  ${OWNER_ADMIN.email}  /  ${OWNER_ADMIN.password}`)
-  console.log(`  every other account below  /  ${DEV_PASSWORD}`)
+  if (owner) console.log(`  ${owner.email}  /  (the password you supplied)`)
+  console.log(`  every account below  /  ${DEV_PASSWORD}`)
   console.log('─────────────────────────────────────────────────────────────────────')
   console.log(`\nSign in at ${hosted ? (process.env.APP_URL ?? '<APP_URL>') : 'http://localhost:3000'}\n`)
 

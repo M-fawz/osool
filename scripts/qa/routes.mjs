@@ -6,21 +6,34 @@
  * and the answer without making the answer more true.
  */
 
-const BASE = process.env.QA_BASE ?? 'https://osool-cyan.vercel.app'
+import { adminCredentials, demonstrationPassword } from '../lib/credentials.mjs'
+
+/*
+ * Localhost by default, deliberately.
+ *
+ * This defaulted to the production URL, so `npm run qa:routes` with no
+ * arguments signed in to the live deployment a dozen times and spent its
+ * rate-limit budget. The address of a register to probe is not something to
+ * guess on a developer's behalf.
+ */
+const BASE = process.env.QA_BASE ?? 'http://localhost:3000'
+
+const ADMIN = adminCredentials(BASE)
+const DEMO = demonstrationPassword()
 
 const ACCOUNTS = {
-  admin: ['mahmoud.fawzy@osool.gov.eg', 'MahmoudFawzy@123'],
-  clerk: ['clerk@osool.test', 'DevOnly!Osool2026'],
-  examiner: ['examiner@osool.test', 'DevOnly!Osool2026'],
-  reviewer: ['reviewer@osool.test', 'DevOnly!Osool2026'],
-  reviewer2: ['reviewer2@osool.test', 'DevOnly!Osool2026'],
-  issuer: ['issuer@osool.test', 'DevOnly!Osool2026'],
-  data: ['data@osool.test', 'DevOnly!Osool2026'],
-  files: ['files@osool.test', 'DevOnly!Osool2026'],
-  auditor: ['auditor@osool.test', 'DevOnly!Osool2026'],
-  aml: ['aml@osool.test', 'DevOnly!Osool2026'],
-  broker: ['broker@osool.test', 'DevOnly!Osool2026'],
-  zamalek: ['zamalek@osool.test', 'DevOnly!Osool2026'],
+  admin: [ADMIN.email, ADMIN.password],
+  clerk: ['clerk@osool.test', DEMO],
+  examiner: ['examiner@osool.test', DEMO],
+  reviewer: ['reviewer@osool.test', DEMO],
+  reviewer2: ['reviewer2@osool.test', DEMO],
+  issuer: ['issuer@osool.test', DEMO],
+  data: ['data@osool.test', DEMO],
+  files: ['files@osool.test', DEMO],
+  auditor: ['auditor@osool.test', DEMO],
+  aml: ['aml@osool.test', DEMO],
+  broker: ['broker@osool.test', DEMO],
+  zamalek: ['zamalek@osool.test', DEMO],
 }
 
 const ROUTES = [
@@ -160,7 +173,7 @@ console.log('\n2. Authentication')
 const noOrigin = await fetch(`${BASE}/api/auth/sign-in/email`, {
   method: 'POST',
   headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ email: 'mahmoud.fawzy@osool.gov.eg', password: 'MahmoudFawzy@123' }),
+  body: JSON.stringify({ email: ADMIN.email, password: ADMIN.password }),
   redirect: 'manual',
 })
 check('sign-in without Origin refused (CSRF)', noOrigin.status === 403, `status ${noOrigin.status}`)
@@ -168,7 +181,7 @@ check('sign-in without Origin refused (CSRF)', noOrigin.status === 403, `status 
 const evil = await fetch(`${BASE}/api/auth/sign-in/email`, {
   method: 'POST',
   headers: { 'content-type': 'application/json', origin: 'https://attacker.example' },
-  body: JSON.stringify({ email: 'mahmoud.fawzy@osool.gov.eg', password: 'MahmoudFawzy@123' }),
+  body: JSON.stringify({ email: ADMIN.email, password: ADMIN.password }),
   redirect: 'manual',
 })
 check('sign-in from untrusted origin refused', evil.status === 403, `status ${evil.status}`)
@@ -184,10 +197,10 @@ for (const [who, [email, password]] of Object.entries(ACCOUNTS)) {
 }
 
 await sleep(11000)
-const bad = await signIn('mahmoud.fawzy@osool.gov.eg', 'WrongPassword123!', { attempts: 2 })
+const bad = await signIn(ADMIN.email, 'WrongPassword123!', { attempts: 2 })
 check('wrong password refused', bad.status >= 400 && bad.status !== 429, `status ${bad.status}`)
 await sleep(11000)
-const ghost = await signIn('nobody@osool.test', 'DevOnly!Osool2026', { attempts: 2 })
+const ghost = await signIn('nobody@osool.test', DEMO, { attempts: 2 })
 check('unknown account refused', ghost.status >= 400 && ghost.status !== 429, `status ${ghost.status}`)
 check(
   'no account enumeration (same status for both)',

@@ -650,7 +650,7 @@ async function proofRoutes() {
     { path: '/login', account: '', label: 'sign in' },
     { path: '/dashboard', account: 'auditor@osool.test', label: 'dashboard' },
     { path: '/audit', account: 'auditor@osool.test', label: 'audit trail' },
-    { path: '/admin/users', account: 'mahmoud.fawzy@osool.gov.eg', label: 'accounts' },
+    { path: '/admin/users', account: 'admin@osool.test', label: 'accounts' },
     { path: '/application', account: 'broker@osool.test', label: 'broker applications' },
     { path: '/registration', account: 'shorouk@osool.test', label: 'broker registration' },
     { path: '/intake', account: 'clerk@osool.test', label: 'intake queue' },
@@ -699,7 +699,7 @@ async function proofRoutes() {
 
       if (account) {
         const password =
-          account === 'mahmoud.fawzy@osool.gov.eg' ? 'MahmoudFawzy@123' : 'DevOnly!Osool2026'
+          'DevOnly!Osool2026'
         const page = await context.newPage()
         await page.goto(`${base}/login`, { waitUntil: 'load' })
         // The sign-in form is a client component and its submit handler only

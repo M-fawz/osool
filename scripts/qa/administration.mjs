@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import { adminCredentials } from '../lib/credentials.mjs'
 
 /**
  * The administrator's controls, exercised over HTTP against production.
@@ -16,7 +17,7 @@ import { PrismaClient } from '@prisma/client'
  * says so.
  */
 
-const BASE = process.env.QA_BASE ?? 'https://osool-cyan.vercel.app'
+const BASE = process.env.QA_BASE ?? 'http://localhost:3000'
 const db = new PrismaClient()
 
 let pass = 0
@@ -63,8 +64,9 @@ const auditSince = async (since, action) =>
 
 console.log(`\nAdministrator controls — ${BASE}\n${'='.repeat(70)}`)
 
-const admin = await signIn('mahmoud.fawzy@osool.gov.eg', 'MahmoudFawzy@123')
-console.log('signed in as mahmoud.fawzy@osool.gov.eg (SYSTEM_ADMIN)')
+const ADMIN = adminCredentials(BASE)
+const admin = await signIn(ADMIN.email, ADMIN.password)
+console.log(`signed in as ${ADMIN.email} (SYSTEM_ADMIN, from the ${ADMIN.source})`)
 
 // ── Resolve the deployed action ids ────────────────────────────────────────
 const html = await (await fetch(`${BASE}/en/admin/users`, { headers: { cookie: admin } })).text()
@@ -192,7 +194,7 @@ if (!uid) {
 
 // ── 6. The administrator cannot promote themselves ─────────────────────────
 console.log('\n6. The administrator cannot promote themselves')
-const self = await db.user.findUnique({ where: { email: 'mahmoud.fawzy@osool.gov.eg' }, select: { id: true, role: true } })
+const self = await db.user.findUnique({ where: { email: ADMIN.email }, select: { id: true, role: true } })
 await callAction(ACTIONS.changeRole, admin, { userId: self.id, role: 'AUDITOR', reason: 'QA: attempting a self role change.' })
 const selfAfter = await db.user.findUnique({ where: { id: self.id }, select: { role: true } })
 check('an administrator cannot change their own role', selfAfter?.role === 'SYSTEM_ADMIN', selfAfter?.role)

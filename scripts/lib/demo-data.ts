@@ -657,6 +657,7 @@ export const DEMO_OFFICIALS: Array<{
   name: string
   nameAr: string
   role:
+    | 'SYSTEM_ADMIN'
     | 'REGISTRY_CLERK'
     | 'EXAMINER'
     | 'REVIEWER'
@@ -665,8 +666,40 @@ export const DEMO_OFFICIALS: Array<{
     | 'FILES_HEAD'
     | 'AUDITOR'
     | 'AML_SUPERVISOR'
+    | 'INSPECTOR'
+    | 'ANALYST'
   note: string
 }> = [
+  {
+    /*
+     * The administrator was previously not seeded at all: the only SYSTEM_ADMIN
+     * this script made was a named person's account whose password was a
+     * literal in the source. With that removed, seeding produced a register
+     * with no administrator and no way to reach `/admin/users` — so the role
+     * that manages every other account is now an ordinary demonstration
+     * fixture like the rest, on the same reserved TLD and the same published
+     * password.
+     */
+    email: 'admin@osool.test',
+    name: 'Hoda Sabry Mansour',
+    nameAr: 'هدى صبري منصور',
+    role: 'SYSTEM_ADMIN',
+    note: 'Accounts and roles. Refused all case data by design.',
+  },
+  {
+    email: 'inspector@osool.test',
+    name: 'Tarek Wagdy Selim',
+    nameAr: 'طارق وجدي سليم',
+    role: 'INSPECTOR',
+    note: 'Supervision — inspections and findings.',
+  },
+  {
+    email: 'analyst@osool.test',
+    name: 'Nadia Fouad Rashad',
+    nameAr: 'نادية فؤاد رشاد',
+    role: 'ANALYST',
+    note: 'Signals and analysis. Refused document content.',
+  },
   {
     email: 'clerk@osool.test',
     name: 'Samia Roushdy Attia',

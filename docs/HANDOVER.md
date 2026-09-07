@@ -113,7 +113,7 @@ secrets, and documenting them is deliberate.
 
 | Email | Role | Password | Person shown in the UI |
 |---|---|---|---|
-| `mahmoud.fawzy@osool.gov.eg` | `SYSTEM_ADMIN` | `MahmoudFawzy@123` | — |
+| `admin@osool.test` | `SYSTEM_ADMIN` | `DevOnly!Osool2026` | — |
 | `nile@osool.test` | `BROKER_OWNER` | `DevOnly!Osool2026` | نادية سليم عبد العزيز |
 | `broker@osool.test` | `BROKER_OWNER` | `DevOnly!Osool2026` | محمود عبد الرحمن حسن |
 | `clerk@osool.test` | `REGISTRY_CLERK` | `DevOnly!Osool2026` | سامية رشدي عطية |

@@ -35,7 +35,7 @@ up later — nothing is lost.
 | 4. Reviewer *(a different person — this matters)* | `reviewer2@osool.test` | `DevOnly!Osool2026` |
 | 5. Card issuer | `issuer@osool.test` | `DevOnly!Osool2026` |
 | Optional — the auditor | `auditor@osool.test` | `DevOnly!Osool2026` |
-| Optional — the administrator | `mahmoud.fawzy@osool.gov.eg` | `MahmoudFawzy@123` |
+| The administrator | `admin@osool.test` | `DevOnly!Osool2026` |
 
 Sign out from the menu in the **top right**, which also shows who you are signed
 in as and in what role. Point at it when you switch — it is how the audience

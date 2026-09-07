@@ -30,15 +30,17 @@
 import { existsSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { adminCredentials, demonstrationPassword } from '../lib/credentials.mjs'
 
 const BASE =
   process.argv[process.argv.indexOf('--base') + 1]?.startsWith('http')
     ? process.argv[process.argv.indexOf('--base') + 1]
-    : 'https://osool-cyan.vercel.app'
+    : (process.env.QA_BASE ?? 'http://localhost:3000')
 
-const PASSWORD = 'DevOnly!Osool2026'
+const PASSWORD = demonstrationPassword()
 /** The administrator was provisioned separately and has its own password. */
-const PASSWORDS = { 'mahmoud.fawzy@osool.gov.eg': 'MahmoudFawzy@123' }
+const ADMIN = adminCredentials(BASE)
+const PASSWORDS = { [ADMIN.email]: ADMIN.password }
 const passwordFor = (email) => PASSWORDS[email] ?? PASSWORD
 const DEMO_DIR = join(process.cwd(), 'docs', 'demo-documents')
 
@@ -656,7 +658,7 @@ async function main() {
   const examiner = await new Client('examiner').signIn('examiner@osool.test')
   const reviewer = await new Client('reviewer').signIn('reviewer2@osool.test')
   const issuer = await new Client('issuer').signIn('issuer@osool.test')
-  const admin = await new Client('admin').signIn('mahmoud.fawzy@osool.gov.eg')
+  const admin = await new Client('admin').signIn(ADMIN.email)
 
   /*
    * Whether a screen opened is asked positively — does the page carry the

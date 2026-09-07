@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { createRequire } from 'node:module'
+import { adminCredentials } from '../lib/credentials.mjs'
 
 /**
  * The whole account lifecycle, from the administrator's click to the new
@@ -11,7 +12,7 @@ import { createRequire } from 'node:module'
  * for — not one the administrator knows the password to.
  */
 
-const BASE = process.env.QA_BASE ?? 'https://osool-cyan.vercel.app'
+const BASE = process.env.QA_BASE ?? 'http://localhost:3000'
 const db = new PrismaClient()
 const require = createRequire(import.meta.url)
 const { encodeReply } = require('next/dist/compiled/react-server-dom-webpack/client.edge')
@@ -39,7 +40,8 @@ async function signIn(email, password) {
 
 console.log(`\nAccount lifecycle — ${BASE}\n${'='.repeat(70)}`)
 
-const { jar: admin } = await signIn('mahmoud.fawzy@osool.gov.eg', 'MahmoudFawzy@123')
+const ADMIN = adminCredentials(BASE)
+const { jar: admin } = await signIn(ADMIN.email, ADMIN.password)
 
 // Resolve the deployed action id.
 const html = await (await fetch(`${BASE}/en/admin/users`, { headers: { cookie: admin } })).text()

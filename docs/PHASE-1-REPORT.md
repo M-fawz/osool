@@ -315,7 +315,7 @@ the refusal path in `transition()`. It was left out of Phase 1 rather than half-
 
 | Account | Password | Role |
 |---|---|---|
-| `mahmoud.fawzy@osool.gov.eg` | `MahmoudFawzy@123` | `SYSTEM_ADMIN` |
+| `admin@osool.test` | `DevOnly!Osool2026` | `SYSTEM_ADMIN` |
 | `clerk@osool.test` | `DevOnly!Osool2026` | `REGISTRY_CLERK` |
 | `examiner@osool.test`, `examiner2@osool.test` | `DevOnly!Osool2026` | `EXAMINER` |
 | `reviewer@osool.test`, `reviewer2@osool.test` | `DevOnly!Osool2026` | `REVIEWER` |
@@ -328,8 +328,8 @@ the refusal path in `transition()`. It was left out of Phase 1 rather than half-
 
 > ### These accounts must never exist in any real deployment
 >
-> `mahmoud.fawzy@osool.gov.eg` has its password **set directly**, bypassing the activation-email
-> path that every real government account must use. `MahmoudFawzy@123` is eight characters of a
+> `admin@osool.test` has its password **set directly**, bypassing the activation-email
+> path that every real government account must use. Its password is published in this repository
 > name and three digits; it would not survive an afternoon.
 >
 > The seed refuses to run with `NODE_ENV=production` or against a non-local database, checked in

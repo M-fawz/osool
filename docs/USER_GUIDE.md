@@ -248,7 +248,7 @@ audit trail itself are all events.
 
 ---
 
-## 7. System administrator / مسؤول النظام — `mahmoud.fawzy@osool.gov.eg`
+## 7. System administrator / مسؤول النظام — `admin@osool.test`
 
 **Can:** create government accounts, assign their roles, suspend them, and view the account list at
 `/admin/users`. When an account is created, the activation link is shown **once** on screen — copy

@@ -64,7 +64,9 @@ with real actors and timestamps, and no queue demonstrates empty.
 
 | Address | Password | Role | What it is for |
 |---|---|---|---|
-| `mahmoud.fawzy@osool.gov.eg` | `MahmoudFawzy@123` | `SYSTEM_ADMIN` | Accounts. Refused all case data. |
+| `admin@osool.test` | `DevOnly!Osool2026` | `SYSTEM_ADMIN` | Accounts and roles. Refused all case data. |
+| `inspector@osool.test` | `DevOnly!Osool2026` | `INSPECTOR` | Supervision — inspections and findings. |
+| `analyst@osool.test` | `DevOnly!Osool2026` | `ANALYST` | Signals. Refused document content. |
 | `broker@osool.test` | `DevOnly!Osool2026` | `BROKER_OWNER` | The portal. An empty draft — walk it end to end. |
 | `delta@osool.test` | `DevOnly!Osool2026` | `BROKER_OWNER` | A complete draft requesting Category C on EGP 30,000 — the refusal. |
 | `clerk@osool.test` | `DevOnly!Osool2026` | `REGISTRY_CLERK` | Intake — temporary numbers and assignment. |
@@ -82,9 +84,9 @@ Twelve more broker accounts (`nile@`, `newcairo@`, `haramain@`, `mohandeseen@`, 
 `alex@`, `giza@`, `maadi@`, `shorouk@`, `aswan@`, `heliopolis@`, `october@`) hold the
 applications at every other stage of REQ-REG-050. All use `DevOnly!Osool2026`.
 
-> **These accounts must never exist in any real deployment.** `mahmoud.fawzy@osool.gov.eg` has its
-> password set directly, bypassing the activation-email path every real government account must use,
-> and `MahmoudFawzy@123` would not survive an afternoon. The seed refuses to run with
+> **These accounts must never exist in any real deployment.** Their passwords are published in
+> this file, on purpose, so that the register can be opened and demonstrated; every one of them is
+> on the `.test` TLD, which RFC 2606 reserves and no resolver will ever answer. The seed refuses to run with
 > `NODE_ENV=production` or against a non-local database — checked in code, not merely documented —
 > but that is a guard, not a substitute for judgement. Before any deployment these accounts are
 > removed and the register is seeded empty.
