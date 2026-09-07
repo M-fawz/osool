@@ -12,21 +12,22 @@ Phase 3 — making the system demonstrable end to end.
 
 ## CURRENT STATUS
 
+_Last updated 2026-09-07, end of session._
+
 | | |
 |---|---|
-| **Branch** | `chore/checkpoint-uncommitted` |
-| **Commit** | `71bfc60` at session open |
-| **Remote `main`** | `b3e2d4b` — 29 commits behind this branch |
-| **Production** | `osool-cyan.vercel.app` — serving stale `main`; `/api/health` 404s, proving the deployment predates the health route |
-| **Production database** | **Does not exist.** The Supabase project is NXDOMAIN. |
-| **Local database** | Embedded PostgreSQL 16 on `127.0.0.1:5433`, healthy. 4,607 users · 3,194 applications · 359 registrations · 384 appointments · 2,016 documents · 6,277 audit events |
-| **Tests** | **181 passing / 21 files / 0 failed / 0 skipped** (was 152/19) |
-| **Typecheck** | PASS |
-| **Lint** | PASS |
-| **Build** | PASS |
-| **Full gate** | `npm run ci` → **exit 0** (typecheck · lint · no-deletes · one-archiver · i18n · tests · build) |
-| **Deployment** | Vercel project live, running old code against no database |
-| **Browser** | `npm run qa:browser` — Playwright smoke suite, new this session |
+| **Branch** | `main` |
+| **Commit** | `d0783cc` — pushed; remote and local agree |
+| **Session** | 11 commits, from `71bfc60` |
+| **Tests** | **181 passing / 21 files / 0 failed / 0 skipped** (was 152 / 19) |
+| **Full gate** | `npm run ci` → **exit 0** — typecheck · lint · no-deletes · one-archiver · i18n · tests · build |
+| **Browser** | `npm run qa:browser` → **56 passed, 0 failed** (new this session) |
+| **Local database** | Embedded PostgreSQL 16 on `127.0.0.1:5433`, healthy |
+| **Local demo** | **Working end to end.** Registration, sign-in, application, upload, register search, appointment booking, all eleven roles, Arabic and English, desktop and phone |
+| **Production code** | `main` is current |
+| **Production deployment** | **Still serving the pre-session build.** No CSP header and `/api/health` returns HTML, which is how you can tell from outside |
+| **Production database** | **Does not exist.** `db.wqwapqlzplixsvwcndjc.supabase.co` → NXDOMAIN |
+| **Why the deployment is stuck** | `scripts/vercel-build.mjs` runs `prisma migrate deploy` on production before `next build`. The database is unreachable, the step fails, the build fails, and the deployment is never promoted — so the old one keeps serving. Working as designed; the input is missing |
 
 ---
 
