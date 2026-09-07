@@ -74,6 +74,22 @@ export default async function LoginPage({ params }: { params: Promise<{ locale: 
                 {t('forgot')}
               </Link>
             </p>
+
+            {/* The way *in* for a firm that has never held an account. Kept
+                below the sign-in controls and separated by a rule, because
+                this screen's job is signing in and a registration link placed
+                any higher competes with it — but it has to be here, since a
+                broker who cannot find it has no other route into the register
+                at all. */}
+            <p className="mt-5 border-t border-rule pt-5 text-center text-xs text-ink-muted">
+              {t('noAccount')}{' '}
+              <Link
+                href="/signup"
+                className="font-medium text-navy-600 underline underline-offset-2 hover:text-navy-700"
+              >
+                {t('createAccount')}
+              </Link>
+            </p>
           </div>
         </div>
 

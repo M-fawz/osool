@@ -71,7 +71,9 @@
     "suspendedTitle": "This account is suspended.",
     "suspendedWhy": "A system administrator suspended this account, so it cannot be used to sign in.",
     "suspendedNext": "There is no action you can take from here.",
-    "suspendedWho": "Contact the system administrator at the Authority to find out why."
+    "suspendedWho": "Contact the system administrator at the Authority to find out why.",
+    "noAccount": "Not registered yet?",
+    "createAccount": "Open a broker account"
   },
   "activate": {
     "title": "Activate your account",
@@ -259,7 +261,15 @@
     "unexpectedWhy": "An unexpected fault occurred while saving, and nothing was recorded.",
     "unexpectedNext": "Try again. Everything you entered earlier is still saved.",
     "unexpectedWho": "If it keeps happening, contact Authority technical support.",
-    "summaryTitle": "{count, plural, one {One item needs correcting before this can be saved.} other {# items need correcting before this can be saved.}}"
+    "summaryTitle": "{count, plural, one {One item needs correcting before this can be saved.} other {# items need correcting before this can be saved.}}",
+    "ownerNameArRequired": "Enter the owner name in Arabic.",
+    "ownerNameEnRequired": "Enter the owner name in English.",
+    "emailInvalid": "Enter a valid email address.",
+    "passwordTooShort": "The password must be at least 12 characters.",
+    "passwordTooLong": "The password is too long.",
+    "tradeNameArRequired": "Enter the trade name in Arabic.",
+    "governorateRequired": "Select a governorate.",
+    "addressRequired": "Enter the head office address."
   },
   "portal": {
     "title": "My applications",
@@ -689,7 +699,19 @@
     "completionRequiredShort": "Needed",
     "completionRequiredHint": "A separate sentence from the problem. \"The scan is illegible\" describes what is wrong; \"rescan the first page at a higher resolution\" says what to do. Leaving this out is the commonest reason an item comes back a second time.",
     "completionLegalReference": "Basis",
-    "completionLegalReferenceHint": "The requirement or decree article the item rests on, where there is one. Items with no basis are counted by the process-integrity signals."
+    "completionLegalReferenceHint": "The requirement or decree article the item rests on, where there is one. Items with no basis are counted by the process-integrity signals.",
+    "queueSearchLabel": "Search this queue",
+    "queueSearchHint": "Searches the trade name in Arabic and English, and the temporary reference number.",
+    "queueSearchPlaceholder": "Trade name or reference number",
+    "queueSearchAction": "Search",
+    "queueSearchClear": "Clear",
+    "queueNoMatchTitle": "No file in this queue matches",
+    "queueNoMatchLead": "Change the search terms, or clear the search to see the whole queue.",
+    "queueShowing": "Showing {first}–{last} of {total} applications",
+    "queuePagination": "Queue pagination",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "perPage": "Per page"
   },
   "verify": {
     "pageTitle": "Registration check",
@@ -939,5 +961,33 @@
     "invalidWhy": "The link has expired or has already been used. Reset links work only once.",
     "invalidNext": "Request a new link from the reset password page.",
     "invalidWho": "If this keeps happening, contact the system administrator at the Authority."
+  },
+  "signUp": {
+    "title": "Open a broker account",
+    "lead": "Register your brokerage firm with the Real Estate Brokers Register. You will confirm your email address before you can sign in.",
+    "firmLegend": "The firm",
+    "ownerLegend": "The owner",
+    "tradeNameAr": "Trade name (Arabic)",
+    "tradeNameEn": "Trade name (English)",
+    "governorate": "Governorate",
+    "governoratePlaceholder": "Select a governorate",
+    "headOfficeAddress": "Head office address",
+    "ownerNameAr": "Owner name (Arabic)",
+    "ownerNameEn": "Owner name (English)",
+    "email": "Email address",
+    "emailHint": "The Authority writes to this address. Use one the firm will keep.",
+    "password": "Password",
+    "passwordHint": "At least 12 characters.",
+    "submit": "Open the account",
+    "submitting": "Opening the account…",
+    "sentTitle": "Account opened — confirm your email",
+    "sentLead": "A confirmation message has been sent to the address below. Open the link in it, then sign in. The account cannot be used until the address is confirmed.",
+    "devLinkTitle": "Development link",
+    "devLinkLead": "This deployment has no mail provider, so the confirmation link is shown here. It is never shown in production.",
+    "refusedTitle": "The account was not opened",
+    "refusedLead": "An account already exists for that address, or too many accounts have been opened from this connection. Sign in instead, or reset the password.",
+    "haveAccount": "Already registered?",
+    "backToSignIn": "Sign in",
+    "forgot": "Forgotten your password?"
   }
 }
