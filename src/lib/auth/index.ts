@@ -39,6 +39,37 @@ export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
 
+  /**
+   * Better Auth's own rate limiter, off — because this product has one.
+   *
+   * It is enabled by default in production and it ships a special rule for
+   * `/sign-in*`, `/sign-up*`, `/change-password*` and `/change-email*` of
+   * **three requests per ten seconds**, counted in memory. Three things follow
+   * from leaving it on, and all three are wrong here:
+   *
+   *   1. It fires *before* `src/lib/security/rate-limit.ts`, so the refusal a
+   *      user actually sees is `{"message":"Too many requests. Please try again
+   *      later."}` — English only, no reason, no next step, no one to ask. The
+   *      blocked-action rule in CLAUDE.md admits no exceptions, and the
+   *      register's own limiter answers bilingually and in four parts.
+   *
+   *   2. Three sign-ins per ten seconds is not a sensible budget for this
+   *      product. A GOEIC office where a clerk, an examiner and a reviewer sign
+   *      in one after another has spent it; the fourth person is refused. The
+   *      dual budget in RATE_LIMITS was designed around exactly that scenario —
+   *      an office-sized allowance per address, a small one per account.
+   *
+   *   3. It counts in memory, which is the reason the database-backed limiter
+   *      exists at all: on a serverless host each instance keeps its own
+   *      counter, and a counter that is not shared between instances is not a
+   *      counter.
+   *
+   * It was found by signing in as twelve roles eight seconds apart and watching
+   * every fourth one fail. Both limiters were running; the weaker, undocumented,
+   * English-only one won.
+   */
+  rateLimit: { enabled: false },
+
   emailAndPassword: {
     enabled: true,
     // The supervised population is large and must be able to onboard without
