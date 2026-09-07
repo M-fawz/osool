@@ -117,44 +117,15 @@ async function main(): Promise<void> {
   if (wanted('reminders')) {
     heading('Appointment reminders')
     await step('reminders', async () => {
-      const { db } = await import('../src/lib/db')
-      const { notify } = await import('../src/lib/notifications')
-      const { appointmentSubject } = await import('../src/lib/notifications/subjects')
+      // The logic is in src/lib/notifications/reminders.ts, because the hosted
+      // scheduler's HTTP route needs the same sweep and neither entry point
+      // should own it.
+      const { sweepAppointmentReminders } = await import('../src/lib/notifications/reminders')
 
-      /*
-       * Tomorrow's bookings, reminded once.
-       *
-       * `reminderSentAt` is the guard rather than the dedupe key alone: the
-       * notification table would refuse a second send anyway, but writing the
-       * timestamp means the next sweep does not even look at the row. On a
-       * register with a busy counter that is the difference between a query over
-       * tomorrow and a query over every appointment ever booked.
-       */
-      const from = new Date(Date.now() + 12 * 60 * 60 * 1000)
-      const to = new Date(Date.now() + 36 * 60 * 60 * 1000)
-
-      const due = await db.appointment.findMany({
-        where: {
-          status: 'BOOKED',
-          reminderSentAt: null,
-          slot: { startsAt: { gte: from, lte: to }, closedAt: null },
-        },
-        select: { id: true },
-      })
-
-      console.log(`  ${due.length} appointment(s) in the reminder window`)
+      const result = await sweepAppointmentReminders({ dry })
+      console.log(`  ${result.due} appointment(s) in the reminder window`)
       if (dry) return
-
-      for (const appointment of due) {
-        const subject = await appointmentSubject(appointment.id)
-        if (!subject) continue
-        await notify({ event: 'APPOINTMENT_REMINDER', subject: { appointment: subject } })
-        await db.appointment.update({
-          where: { id: appointment.id },
-          data: { reminderSentAt: new Date() },
-        })
-      }
-      console.log(`  reminded ${due.length}`)
+      console.log(`  reminded ${result.reminded}`)
     })
   }
 

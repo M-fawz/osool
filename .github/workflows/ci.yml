@@ -22,11 +22,13 @@ name: CI
 # no deployment secret is exposed to it, and the seeds refuse a non-local host
 # in their own code.
 
+# Every branch, not only `main`. A gate that first runs *after* the merge tells
+# you a commit was bad once it is already on the branch that deploys.
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 # A second push supersedes the first. There is no value in finishing a run for
 # a commit that is already three commits behind.
@@ -80,6 +82,17 @@ jobs:
       # destructive write at review time rather than in production.
       - name: No destructive deletes
         run: npm run audit:no-deletes
+
+      # The other one-writer control: `archivedAt` may only be set by
+      # src/lib/retention. It was in the `ci` npm script and had never run here.
+      - name: One archiver
+        run: npm run audit:one-archiver
+
+      # Arabic is not a translation of this product, it is the product
+      # (CLAUDE.md rule 7). A key present in one catalogue and missing from the
+      # other renders as a raw key on a government screen.
+      - name: Message catalogues agree
+        run: npm run i18n:check
 
       - name: Production build
         run: npm run build
@@ -146,3 +159,29 @@ jobs:
       # Attacks the hash chain four ways and requires each to be detected.
       - name: Audit trail resists tampering
         run: npm run proof:audit
+
+      # ── The suite itself ────────────────────────────────────────────────
+      #
+      # This is the step this workflow was missing, and its absence was the
+      # gap that mattered most: the `ci` npm script has run `npm test` for
+      # some time and the workflow was never updated to match, so every
+      # integration test in the project — the transitions, the audit chain,
+      # segregation of duties, retention, the queue pagination — was green on
+      # a developer's machine and ungated on the branch that deploys.
+      #
+      # It belongs in this job rather than in `checks` because the integration
+      # project needs a real PostgreSQL, which only this job has. Each run
+      # creates its own schema and drops it afterwards; see tests/setup/global.ts.
+      - name: Tests
+        run: npm test
+
+      # The reports are written whether the suite passed or failed, and the
+      # failed run is the one worth keeping.
+      - name: Test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: .proof/test-reports/
+          if-no-files-found: warn
+          retention-days: 14
