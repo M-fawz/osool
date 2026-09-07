@@ -59,6 +59,24 @@ function makeNonce(): string {
   return Buffer.from(crypto.randomUUID()).toString('base64')
 }
 
+/**
+ * `next dev` evaluates strings as JavaScript — React Refresh and the hot-reload
+ * client both do it — so development needs `'unsafe-eval'` and production must
+ * not have it.
+ *
+ * Keyed on NODE_ENV, which is safe here in a way it is not for HSTS: `next dev`
+ * is the only thing that sets it to development, and every build — including
+ * one a developer runs before `npm start` — sets production. So the looser
+ * policy cannot be baked into a production bundle. Getting it wrong makes
+ * development inconvenient, not a deployment insecure.
+ *
+ * This was dropped when the policy moved out of `next.config.ts`, and the
+ * symptom was narrow but real: the page rendered, and the console carried
+ * "Evaluating a string as JavaScript violates the following Content Security
+ * Policy directive" on every load while hot reload quietly stopped working.
+ */
+const DEV_SCRIPT_SOURCES = process.env.NODE_ENV === 'development' ? " 'unsafe-eval'" : ''
+
 function policy(nonce: string): string {
   return [
     "default-src 'self'",
@@ -70,7 +88,7 @@ function policy(nonce: string): string {
      * script to what that script loads, and `'self'` remains as the fallback
      * for browsers too old to understand it.
      */
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${DEV_SCRIPT_SOURCES}`,
     // Styles keep `'unsafe-inline'`: Next and Tailwind emit inline styles for
     // streamed segments and there is no nonce path for them in the App Router
     // today. It is the one concession, and it is on styles rather than
