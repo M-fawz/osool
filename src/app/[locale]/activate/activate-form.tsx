@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from '@/i18n/navigation'
 import { authClient } from '@/lib/auth/client'
+import { useHydrated } from '@/lib/hooks/use-hydrated'
 import { BlockedAction, Button, Field, Input, Notice } from '@/components/ui/primitives'
 
 const MIN_PASSWORD_LENGTH = 12
@@ -19,6 +20,7 @@ export function ActivateForm({
   headings: { what: string; why: string; next: string; who: string }
 }) {
   const router = useRouter()
+  const ready = useHydrated()
   const [problem, setProblem] = useState<'none' | 'mismatch' | 'tooShort' | 'invalidToken'>(
     !token || hadLinkError ? 'invalidToken' : 'none',
   )
@@ -59,7 +61,14 @@ export function ActivateForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-5" noValidate>
+    /*
+     * `method="post"`, and the submit gated on hydration — see
+     * src/lib/hooks/use-hydrated.ts. This screen is the worse of the two: its
+     * URL already carries the one-time activation token, so a pre-hydration
+     * submission would write the chosen password into history and the access
+     * log *next to the token that authorises setting it*.
+     */
+    <form method="post" onSubmit={onSubmit} className="space-y-5" noValidate>
       {problem === 'invalidToken' ? (
         <BlockedAction
           what={labels.invalidTitle!} why={labels.invalidWhy!}
@@ -103,8 +112,8 @@ export function ActivateForm({
           minLength={MIN_PASSWORD_LENGTH} disabled={problem === 'invalidToken'} />
       </Field>
 
-      <Button type="submit" size="touch" className="w-full" busy={busy}
-        disabled={problem === 'invalidToken'}>
+      <Button type="submit" size="touch" className="w-full" busy={busy || !ready}
+        disabled={problem === 'invalidToken' || !ready}>
         {busy ? labels.submitting! : labels.submit!}
       </Button>
     </form>

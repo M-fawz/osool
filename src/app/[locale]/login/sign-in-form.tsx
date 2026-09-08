@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from '@/i18n/navigation'
 import { signIn } from '@/lib/auth/client'
+import { useHydrated } from '@/lib/hooks/use-hydrated'
 import { BlockedAction, Button, Field, Input } from '@/components/ui/primitives'
 
 /**
@@ -30,9 +31,30 @@ export function SignInForm({
   headings: { what: string; why: string; next: string; who: string }
 }) {
   const router = useRouter()
+  const ready = useHydrated()
   const [pending, startTransition] = useTransition()
   const [submitting, setSubmitting] = useState(false)
   const [failure, setFailure] = useState<'none' | 'credentials' | 'suspended'>('none')
+
+  /*
+   * Warm `/dashboard` while the credentials are still being typed.
+   *
+   * Signing in is the one navigation in the product whose destination is known
+   * before the user acts, and it is also the one the user is least willing to
+   * wait for: they have just handed over a password and cannot tell whether it
+   * was accepted. Fetching the destination up front moves that wait to a moment
+   * when nobody is waiting.
+   *
+   * It matters most in development, where a route is compiled on first request
+   * and `/dashboard` — the whole signed-in shell — is one of the slowest in the
+   * product. Without this, the first sign-in after a server restart sits on the
+   * submit button for the length of that compile with the screen unchanged, and
+   * reads as an authentication failure rather than a build step. That is
+   * exactly how this was reported.
+   */
+  useEffect(() => {
+    router.prefetch('/dashboard')
+  }, [router])
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -62,10 +84,27 @@ export function SignInForm({
     })
   }
 
+  /*
+   * Two different waits, and they must not look the same.
+   *
+   * `submitting` is "the password is being checked"; `pending` is "it was
+   * accepted, and the dashboard is being fetched". Labelling both "Checking…"
+   * means the one fact the person at the keyboard actually wants — was I let
+   * in? — is withheld for the whole of the second wait, and a slow navigation
+   * becomes indistinguishable from a rejected password.
+   */
   const busy = submitting || pending
+  const busyLabel = submitting ? labels.submitting! : labels.signingIn!
 
   return (
-    <form onSubmit={onSubmit} className="space-y-5" noValidate>
+    /*
+     * `method="post"` on a form whose submission is handled in JavaScript is
+     * not redundant. See src/lib/hooks/use-hydrated.ts: before hydration this
+     * is a plain HTML form, and the HTML default would put the password in the
+     * query string. The method decides where the fields go if that ever
+     * happens; `ready` below decides that it does not.
+     */
+    <form method="post" onSubmit={onSubmit} className="space-y-5" noValidate>
       {failure !== 'none' ? (
         <BlockedAction
           what={failure === 'suspended' ? labels.suspendedTitle! : labels.failedTitle!}
@@ -92,8 +131,14 @@ export function SignInForm({
         <Input name="password" type="password" dir="ltr" autoComplete="current-password" required />
       </Field>
 
-      <Button type="submit" size="touch" className="w-full" busy={busy}>
-        {busy ? labels.submitting! : labels.submit!}
+      <Button
+        type="submit"
+        size="touch"
+        className="w-full"
+        busy={busy || !ready}
+        disabled={!ready}
+      >
+        {busy ? busyLabel : labels.submit!}
       </Button>
     </form>
   )

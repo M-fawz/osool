@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Link } from '@/i18n/navigation'
+import { useHydrated } from '@/lib/hooks/use-hydrated'
 import { authClient } from '@/lib/auth/client'
 import { Button, Field, Input, Notice } from '@/components/ui/primitives'
 
@@ -25,6 +26,7 @@ export function ForgotPasswordForm({
 }: {
   labels: Record<string, string>
 }) {
+  const ready = useHydrated()
   const [state, setState] = useState<'idle' | 'busy' | 'sent' | 'unreachable'>('idle')
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -65,7 +67,13 @@ export function ForgotPasswordForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-5" noValidate>
+    /*
+     * See src/lib/hooks/use-hydrated.ts. No password here, but a submission
+     * before hydration would still put the address in the URL and the access
+     * log — and which addresses hold accounts on this register is itself the
+     * thing the sign-in screen declines to disclose.
+     */
+    <form method="post" onSubmit={onSubmit} className="space-y-5" noValidate>
       {state === 'unreachable' ? (
         <Notice tone="blocking" title={labels.unreachableTitle!} live>
           {labels.unreachableLead!}
@@ -84,7 +92,13 @@ export function ForgotPasswordForm({
         />
       </Field>
 
-      <Button type="submit" size="touch" className="w-full" disabled={state === 'busy'}>
+      <Button
+        type="submit"
+        size="touch"
+        className="w-full"
+        busy={!ready}
+        disabled={state === 'busy' || !ready}
+      >
         {state === 'busy' ? labels.submitting! : labels.submit!}
       </Button>
 
