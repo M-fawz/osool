@@ -12,14 +12,14 @@ Phase 3 — making the system demonstrable end to end.
 
 ## CURRENT STATUS
 
-_Last updated 2026-09-07, end of session._
+_Last updated 2026-09-08, end of session._
 
 | | |
 |---|---|
 | **Branch** | `main` |
-| **Commit** | `d0783cc` — pushed; remote and local agree |
-| **Session** | 11 commits, from `71bfc60` |
-| **Tests** | **181 passing / 21 files / 0 failed / 0 skipped** (was 152 / 19) |
+| **Commit** | `2e30961` — pushed; remote and local agree |
+| **Session** | 2026-09-07: 11 commits from `71bfc60`. 2026-09-08: 2 commits from `de3341c` |
+| **Tests** | **188 passing / 22 files / 0 failed / 0 skipped** (was 181 / 21) |
 | **Full gate** | `npm run ci` → **exit 0** — typecheck · lint · no-deletes · one-archiver · i18n · tests · build |
 | **Browser** | `npm run qa:browser` → **56 passed, 0 failed** (new this session) |
 | **Local database** | Embedded PostgreSQL 16 on `127.0.0.1:5433`, healthy |
@@ -252,6 +252,79 @@ Everything required to demonstrate Osool end to end.
   `src/lib/storage/`, `src/lib/documents/`
 - **Verification:** upload through the browser, persist, retrieve,
   integrity-check, and refuse an unauthorised reader.
+
+---
+
+#### P0.9 — A credential form fell back to a GET, putting the password in the URL
+
+- **Status:** VERIFIED
+- **Completed:** 2026-09-08
+- **Reported as:** "authentication failure on the login page". Authentication
+  was never the thing that failed.
+- **Files:** `src/lib/hooks/use-hydrated.ts` (new),
+  `src/app/[locale]/login/sign-in-form.tsx`,
+  `src/app/[locale]/activate/activate-form.tsx`,
+  `src/app/[locale]/forgot-password/forgot-form.tsx`,
+  `tests/unit/credential-form-safety.test.ts` (new)
+- **Finding:** a `<form onSubmit={…}>` carries no `method`, so until React
+  hydrates it is a plain HTML form. A click or an Enter in that window performs
+  the HTML default — a GET to the current URL with every field appended as a
+  query parameter. Reproduced with JavaScript disabled on all three credential
+  screens:
+
+  ```
+  /en/login?email=clerk%40osool.test&password=<redacted>
+  /en/activate?password=…&confirm=…      ← its URL already carries the token
+  /en/forgot-password?email=…
+  ```
+
+- **Two distinct harms.** The visible one: the page reloads unchanged, which is
+  indistinguishable from a rejected password — this is what was reported. The
+  invisible one, and the worse: the password is then in the address bar, in
+  `history`, in the server access log, and in the `Referer` of whatever loads
+  next. Under rule 2 nothing here is ever deleted, so a credential written to a
+  log cannot be taken back.
+- **Why it survived:** the window is invisible to every check that was in
+  place. The HTTP harness never submits a form. The browser harness drives
+  Playwright, whose `click` waits for the control to be actionable and so
+  always arrives *after* hydration. It is only reachable by a real person
+  typing fast, on a cold cache, a slow link, or a development server compiling
+  the route on first request — which is exactly a sign-in screen's traffic.
+- **What changed:** `method="post"` on all three forms, so a native submission
+  puts the fields in the body and never in a URL; and the submit control gated
+  on hydration via `useHydrated`, so the native submission is not reachable and
+  nobody meets the 405 a real pre-hydration POST to a page route would give.
+  Neither half is sufficient alone.
+- **Evidence:** before — `FAIL: 3 of 3 forms leak credentials into the URL
+  without JavaScript`. After — `PASS: 0 of 3`, confirmed against both `next dev`
+  and a production `next start`. The new unit test fails on the three forms as
+  they were (6 failures) and passes on the fix.
+- **Remaining:** sign-in still requires JavaScript. It always did — the GET
+  fallback never authenticated anyone, it only leaked. Making it work without
+  JavaScript means a Server Action sign-in and Better Auth's `nextCookies`
+  plugin; raised, not taken, because it changes the auth flow and the register
+  is mid-demonstration. See P2.
+
+#### P0.10 — Signing in gave no sign that the password had been accepted
+
+- **Status:** VERIFIED
+- **Completed:** 2026-09-08
+- **Files:** `src/app/[locale]/login/sign-in-form.tsx`,
+  `src/app/[locale]/login/page.tsx`, `messages/{ar,en}.json`
+- **Finding:** "Checking…" labelled both the credential check and the
+  navigation after it, so the one fact the user wants — was I let in? — was
+  withheld for the whole second wait. On a cold development server that wait is
+  the on-demand compile of `/dashboard`: measured at 12.4s alone, inside a 54s
+  first sign-in. A build step wearing the costume of an authentication failure.
+- **What changed:** a distinct label once the credentials are accepted
+  (`signingIn`, both locales), and a prefetch of `/dashboard` on mount — the one
+  navigation whose destination is known before the user acts.
+- **Evidence:** button label sequence on a cold server is now
+  `+1484ms "Checking…"` → `+33024ms "Opening your dashboard…"` → lands on
+  `/en/dashboard`. Warm, the whole sign-in is under two seconds.
+- **Not a defect, and worth saying:** all 28 documented demo accounts were
+  verified to sign in against the stored hashes, and no rate-limit window was
+  open. The credentials were never the problem.
 
 ---
 
