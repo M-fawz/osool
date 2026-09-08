@@ -63,6 +63,7 @@
     "password": "Password",
     "submit": "Sign in",
     "submitting": "Checking…",
+    "signingIn": "Opening your dashboard…",
     "forgot": "Forgotten your password?",
     "failedTitle": "You could not be signed in.",
     "failedWhy": "The email address or password is incorrect, or the account has not been activated yet.",

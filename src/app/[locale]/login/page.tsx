@@ -45,6 +45,7 @@ export default async function LoginPage({ params }: { params: Promise<{ locale: 
                 password: t('password'),
                 submit: t('submit'),
                 submitting: t('submitting'),
+                signingIn: t('signingIn'),
                 failedTitle: t('failedTitle'),
                 failedWhy: t('failedWhy'),
                 failedNext: t('failedNext'),
