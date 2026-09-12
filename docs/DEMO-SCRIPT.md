@@ -55,6 +55,92 @@ npm run seed:phase1
 
 ---
 
+## The accounts
+
+**Every password below is `DevOnly!Osool2026`.**
+
+These accounts are on the `.test` domain, which RFC 2606 reserves so that it can
+never resolve, and their password is published in this repository deliberately —
+it is what makes the product openable. **They must never exist on a register
+that supervises anyone real.** Nothing here is a production credential, and none
+of them will open a deployed register.
+
+Sign in at `http://localhost:3000/en/login` — or `/ar/login` for Arabic, which
+is the canonical locale.
+
+**Every government account lands on `/en/dashboard`, not on its own screen.**
+Checked this session by signing each one in. The dashboard is role-aware: it
+greets the holder by name and role, offers *"What you can do now"*, and carries
+only the links that role is allowed — the register, the appointment diary, the
+audit trail. The screen named in the table is where that role's actual work is,
+one click from the dashboard or by typing the address.
+
+Two things that look like faults and are not. A clerk's dashboard can say
+*"Your queue is clear"* while `/en/intake` holds 814 files — the dashboard counts
+work **assigned to that person**, and the intake queue is everything waiting to
+be taken in. And brokers get no dashboard at all: they land straight on
+`/en/application`, which is their whole portal.
+
+### Government
+
+| Email | Password | Role | Their screen | What it demonstrates |
+|---|---|---|---|---|
+| `clerk@osool.test` | `DevOnly!Osool2026` | `REGISTRY_CLERK` | `/en/intake` | Intake, temporary numbers, assignment, and the counter's diary |
+| `examiner@osool.test` | `DevOnly!Osool2026` | `EXAMINER` | `/en/examination` | The examination screen and its field checks |
+| `examiner2@osool.test` | `DevOnly!Osool2026` | `EXAMINER` | `/en/examination` | A second examiner, so files can be spread |
+| `reviewer@osool.test` | `DevOnly!Osool2026` | `REVIEWER` | `/en/review` | The decision. Refused any file they examined themselves |
+| `reviewer2@osool.test` | `DevOnly!Osool2026` | `REVIEWER` | `/en/review` | A second reviewer, so segregation of duties has somewhere to send a file |
+| `issuer@osool.test` | `DevOnly!Osool2026` | `CARD_ISSUER` | `/en/issuance` | Fees, the registration number, the printed card, the handover |
+| `data@osool.test` | `DevOnly!Osool2026` | `DATA_MANAGER` | `/en/records` | Data extraction |
+| `files@osool.test` | `DevOnly!Osool2026` | `FILES_HEAD` | `/en/archive` | Archiving and retention |
+| `auditor@osool.test` | `DevOnly!Osool2026` | `AUDITOR` | `/en/audit` | The hash-chained audit trail |
+| `aml@osool.test` | `DevOnly!Osool2026` | `AML_SUPERVISOR` | `/en/supervision` | Integrity signals and their evidence |
+| `analyst@osool.test` | `DevOnly!Osool2026` | `ANALYST` | `/en/supervision` | Signals, with document content refused |
+| `admin@osool.test` | `DevOnly!Osool2026` | `SYSTEM_ADMIN` | `/en/admin/users` | Accounts and roles — **refused all case data** |
+| `inspector@osool.test` | `DevOnly!Osool2026` | `INSPECTOR` | — | **No screen yet.** Signs in, refused everywhere, with a proper four-part refusal. See the roadmap |
+| `suspended@osool.test` | `DevOnly!Osool2026` | `REGISTRY_CLERK` | — | A suspended account: signs in, refused on every screen |
+
+### Brokers — one per stage of the workflow
+
+Every one of these is `BROKER_OWNER`, password `DevOnly!Osool2026`, signing in
+at the same address and landing on `/en/application` — its own portal.
+
+| Email | Firm | Its application is at | Use it to show |
+|---|---|---|---|
+| `broker@osool.test` | Al-Asala Real Estate Brokerage | `DRAFT` (empty) | Starting an application from nothing |
+| `delta@osool.test` | Delta Misr Real Estate Brokerage | `DRAFT` (complete) | A refusal: Category C requested on EGP 30,000 of capital |
+| `nile@osool.test` | Nile Real Estate Marketing | `SUBMITTED` | **Booking an appointment** |
+| `newcairo@osool.test` | New Cairo Real Estate Investment | `UNDER_INTAKE` | A file the clerk has just taken in |
+| `haramain@osool.test` | Al-Haramain Property Marketing | `UNDER_EXAMINATION` | A file with the examiner |
+| `mohandeseen@osool.test` | Al-Mohandeseen Properties | `AWAITING_COMPLETION` | Outstanding completion items |
+| `heliopolis@osool.test` | Heliopolis Real Estate Brokerage | `UNDER_REVIEW` | A file awaiting the decision |
+| `october@osool.test` | October Property Marketing | `APPROVED` | Approved, before fees |
+| `giza@osool.test` | Giza Property Marketing | `AWAITING_PAYMENT` | Fees due, and the card-collection appointment |
+| `maadi@osool.test` | Maadi Real Estate Brokerage | `CARD_ISSUED` — registration `2026/0001` | The printed card |
+| `zamalek@osool.test` | Zamalek Brokerage and Property | `ACTIVE` — `2026/0003` | A live registration in the register |
+| `alex@osool.test` | Alexandria Investment and Property | `ACTIVE` — `2026/0004` | A live registration in the register |
+| `shorouk@osool.test` | El Shorouk Property Marketing | `ACTIVE` — `2026/0002` | A live registration in the register |
+| `aswan@osool.test` | Aswan Property Services Office | `REJECTED` | A refused application and its stated reason |
+
+### What each role is for, in plain words
+
+| Role | It exists to |
+|---|---|
+| **Registry clerk** | Stand at the counter. Receive an application, give it a temporary number, check it is complete enough to proceed, assign it to an examiner, and run the appointment diary |
+| **Examiner** | Read one file properly. Check every field and document against the rules in force on the day, ask the firm for what is missing, and recommend — never decide |
+| **Reviewer** | Be the second pair of eyes. Take the examiner's recommendation and make the decision. **Never the same person who examined the file** — enforced in the database, not just the interface |
+| **Card issuer** | Handle what happens after approval: the fee, the registration number, the printed card, and the handover |
+| **Data manager** | Extract and correct register data — the records side, not the case side |
+| **Files head** | Archive, retention, and legal hold. The custodian of what the register must keep and for how long |
+| **Auditor** | Read the hash-chained trail of everything anyone did. Reads only; an auditor changes nothing |
+| **AML supervisor** | See the integrity signals and the evidence behind them. Signals inform; they never decide, and dismissing one requires a written reason |
+| **Analyst** | The same signals, with document content withheld |
+| **Inspector** | Field inspection. **Has no screen yet** — the role exists and is deliberately refused everywhere until the regulation says what it may see |
+| **System administrator** | Manage accounts and roles, and **see no case data at all**. Administration is not access |
+| **Broker owner** | The supervised side: apply, upload, book a counter appointment, and watch the file move |
+
+---
+
 ## How long it runs, and what to drop
 
 Six parts, **18 minutes** at a normal pace with the routes warmed. The timings
@@ -111,13 +197,19 @@ should happen. Someone who has never seen the code can read this aloud.
    email address, and a password of at least twelve characters. The same eye
    control is on this screen.
 
-4. **Submit.** The confirmation names the address it was sent to and, in
-   development only, shows the link the Authority would have emailed. Say
-   plainly: in production that link is only ever in the email.
+4. **Submit.** The confirmation names the address it was sent to — and stops
+   there. The activation link is **not** on the page, deliberately: it is a
+   bearer token for the account, and a page that showed it would hand the
+   account to anyone looking at the screen. Say that out loud; it is the point.
 
-5. **Open the link, set the password, and sign in.** The firm's own trade name is
-   in the header. *This account did not exist five minutes ago and no
-   administrator touched it.*
+5. **Show the email instead.** Switch to the terminal running `npm start`. The
+   whole message is printed there in a bordered box, activation link included —
+   the `console` mail driver standing in for Resend. *This is what the Authority
+   would have sent, and in production it only ever exists in the firm's inbox.*
+
+6. **Copy the link, open it, set the password, and sign in.** The firm's own
+   trade name is in the header. *This account did not exist five minutes ago and
+   no administrator touched it.*
 
 ---
 
@@ -125,19 +217,19 @@ should happen. Someone who has never seen the code can read this aloud.
 
 **Accounts:** `broker@osool.test`, then `delta@osool.test`
 
-6. **Sign in as `broker@osool.test`** and open the draft application.
+7. **Sign in as `broker@osool.test`** and open the draft application.
 
-7. **Walk two or three steps.** The entity data, the document checklist, the
+8. **Walk two or three steps.** The entity data, the document checklist, the
    declarations. Everything saves as you go.
 
-8. **Upload a document.** It is hashed on receipt and stored under that hash. A
+9. **Upload a document.** It is hashed on receipt and stored under that hash. A
    second upload into the same slot **supersedes** the first rather than
    overwriting it — both are still there, and the trail says which replaced
    which.
 
-9. **Submit it,** and show the status on the portal.
+10. **Submit it,** and show the status on the portal.
 
-10. **Now the refusal.** Sign in as `delta@osool.test` and open its application.
+11. **Now the refusal.** Sign in as `delta@osool.test` and open its application.
     Category C on EGP 30,000 of paid-up capital is refused, and the refusal says
     **what is blocked, why, what to do next, and who to ask** — naming the
     requirement it comes from. That is the shape of every refusal in the
@@ -149,22 +241,22 @@ should happen. Someone who has never seen the code can read this aloud.
 
 **Account:** `nile@osool.test`
 
-11. **Sign in and open the application,** then **Appointment**.
+12. **Sign in and open the application,** then **Appointment**.
 
-12. **Read the calendar.** Every open period is listed with **places left**, so a
+13. **Read the calendar.** Every open period is listed with **places left**, so a
     nearly-full morning is distinguishable from an empty one. Periods that are
     full or closed are shown and cannot be chosen.
 
-13. **Book one.** Choose a time, give an attendee name and a telephone number,
+14. **Book one.** Choose a time, give an attendee name and a telephone number,
     and confirm.
 
-14. **Read the confirmation back.** It states **when, where, who is attending,
+15. **Read the confirmation back.** It states **when, where, who is attending,
     and what to bring**.
 
-15. **Try to book a second.** You cannot — the picker is replaced by the live
+16. **Try to book a second.** You cannot — the picker is replaced by the live
     booking. One live appointment per application.
 
-16. **Cancel it,** giving a reason. The place goes back into the pool and the
+17. **Cancel it,** giving a reason. The place goes back into the pool and the
     picker returns. The reason is recorded; cancelling is not a penalty and the
     copy does not imply one.
 
@@ -178,28 +270,33 @@ in the Authority's diary.)*
 **Accounts:** `clerk@osool.test`, then `examiner@osool.test`, then
 `reviewer@osool.test`, then `issuer@osool.test`
 
-17. **Sign in as `clerk@osool.test`.** The intake queue opens with the oldest
-    file first and the waiting time on every row.
+18. **Sign in as `clerk@osool.test`.** You land on the **dashboard**, which
+    greets the clerk by name and role — not on the queue. Now open
+    **`/en/intake`**, or the queue link on the dashboard. It opens with the
+    oldest file first and the waiting time on every row.
+    *If the dashboard says "Your queue is clear", that is correct and not a
+    fault: it counts work assigned to this person. The intake queue is
+    everything waiting to be taken in.*
 
-18. **Show that the queue is real.** The footer names the true total — 814 files.
+19. **Show that the queue is real.** The footer names the true total — 814 files.
     Page to 2, then to 10, then to the last page. Set the page size to 200. Then
     search the queue for a firm by name.
     *Until recently this queue stopped at fifty rows with no way past, and 764 of
     those 814 files could not be reached from the interface at all.*
 
-19. **Show the counter's diary.** `/appointments`. The booking from Part 3 is
+20. **Show the counter's diary.** `/en/appointments`. The booking from Part 3 is
     there, on its day, with the attendance controls beside it. Use the previous
     and next day links.
 
-20. **Take a file in.** Open a `SUBMITTED` file, give it a temporary number, and
+21. **Take a file in.** Open a `SUBMITTED` file, give it a temporary number, and
     assign it to an examiner.
 
-21. **Follow it through.** Sign in as `examiner@osool.test` — the examination
+22. **Follow it through.** Sign in as `examiner@osool.test` — the examination
     screen, field by field. Then `reviewer@osool.test` — the decision.
     **A reviewer is never shown a file they examined themselves.** That is
     enforced in the database, not only in the interface.
 
-22. **Issue the card.** `issuer@osool.test` → `/issuance`: fees, the registration
+23. **Issue the card.** `issuer@osool.test` → `/en/issuance`: fees, the registration
     number, the card, the handover.
 
 ---
@@ -208,18 +305,18 @@ in the Authority's diary.)*
 
 **Accounts:** any officer, then none at all
 
-23. **Open `/register`.** Search by Arabic name. Search by the Latin name. Search
+24. **Open `/en/register`.** Search by Arabic name. Search by the Latin name. Search
     by registration number — try `2026/0003`. Filter by status, and by
     governorate. Page through the results. Open a row.
 
-24. **Sign out completely.** Open `/verify` and enter a registration number. This
+25. **Sign out completely.** Open `/en/verify` and enter a registration number. This
     is what a member of the public sees: **one answer about one number**, and
     nothing that would let anybody enumerate the register or harvest it.
 
-25. **Optional, and worth it.** Sign in as `auditor@osool.test` and open
-    `/audit`. Every action in the demonstration you have just given is in the
+26. **Optional, and worth it.** Sign in as `auditor@osool.test` and open
+    `/en/audit`. Every action in the demonstration you have just given is in the
     chain — the actor, their role, the time, and the rule version in force. Then
-    open `/audit` as `broker@osool.test` and read the refusal.
+    open `/en/audit` as `broker@osool.test` and read the refusal.
 
 ---
 
@@ -228,19 +325,19 @@ in the Authority's diary.)*
 Arabic is the canonical language of this register. English is a full mirror of
 it, not a courtesy.
 
-26. **Switch to Arabic** using the control in the header. The whole interface
+27. **Switch to Arabic** using the control in the header. The whole interface
     mirrors: the navigation moves to the right, the tables reverse, and the icons
     that mean "next" and "previous" swap.
 
-27. **Repeat one flow you have already shown** — the appointment screen is the
+28. **Repeat one flow you have already shown** — the appointment screen is the
     best one. Note that the date, the time and the registration number still read
     left to right inside the Arabic, because a reference number reversed is a
     different number.
 
-28. **Show the password control again, in Arabic.** The eye is now at the *left*
+29. **Show the password control again, in Arabic.** The eye is now at the *left*
     end of the field, and its spoken label is Arabic.
 
-29. **Show a refusal in Arabic.** `delta@osool.test`, the same Category C refusal
+30. **Show a refusal in Arabic.** `delta@osool.test`, the same Category C refusal
     from Part 2. All four parts are there.
 
 ---
