@@ -23,6 +23,7 @@ export default async function ActivatePage({
 
   const t = await getTranslations('activate')
   const tApp = await getTranslations('app')
+  const tCommon = await getTranslations('common')
   const tBlocked = await getTranslations('blocked')
   const tSignIn = await getTranslations('signIn')
 
@@ -46,6 +47,8 @@ export default async function ActivatePage({
               hadLinkError={Boolean(error)}
               labels={{
                 password: t('password'),
+                showPassword: tCommon('showPassword'),
+                hidePassword: tCommon('hidePassword'),
                 confirm: t('confirm'),
                 hint: t('hint'),
                 submit: t('submit'),

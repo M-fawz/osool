@@ -4,7 +4,7 @@ import * as React from 'react'
 import { Link } from '@/i18n/navigation'
 import { ActionFormContext } from '@/components/forms/form-state'
 import { Button } from '@/components/ui/button'
-import { Field, Input, Select } from '@/components/ui/form'
+import { Field, Input, PasswordInput, Select } from '@/components/ui/form'
 import { Notice } from '@/components/ui/notice'
 import { signUpBroker, type SignUpOutcome } from './actions'
 
@@ -165,14 +165,15 @@ export function SignUpForm({
             required
             hint={labels.passwordHint!}
           >
-            <Input
+            <PasswordInput
               id="password"
               name="password"
-              type="password"
               dir="ltr"
               autoComplete="new-password"
               minLength={12}
               required
+              showLabel={labels.showPassword!}
+              hideLabel={labels.hidePassword!}
             />
           </Field>
         </fieldset>

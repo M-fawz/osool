@@ -10,6 +10,7 @@ export default async function LoginPage({ params }: { params: Promise<{ locale: 
   const t = await getTranslations('signIn')
   const tApp = await getTranslations('app')
   const tBlocked = await getTranslations('blocked')
+  const tCommon = await getTranslations('common')
 
   return (
     <div className="flex min-h-dvh flex-col bg-paper-sunk">
@@ -43,6 +44,8 @@ export default async function LoginPage({ params }: { params: Promise<{ locale: 
               labels={{
                 email: t('email'),
                 password: t('password'),
+                showPassword: tCommon('showPassword'),
+                hidePassword: tCommon('hidePassword'),
                 submit: t('submit'),
                 submitting: t('submitting'),
                 signingIn: t('signingIn'),

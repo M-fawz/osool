@@ -229,7 +229,9 @@
     "remove": "إزالة",
     "edit": "تعديل",
     "confirm": "تأكيد",
-    "notRecorded": "لم يُسجَّل"
+    "notRecorded": "لم يُسجَّل",
+    "showPassword": "إظهار كلمة المرور",
+    "hidePassword": "إخفاء كلمة المرور"
   },
   "errors": {
     "required": "هذا الحقل مطلوب.",

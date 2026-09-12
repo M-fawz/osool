@@ -19,7 +19,7 @@
  */
 
 export { Button, Spinner, buttonVariants, type ButtonProps } from './button'
-export { Field, FieldGroup, Input, Select, Textarea } from './form'
+export { Field, FieldGroup, Input, PasswordInput, Select, Textarea } from './form'
 export { Count, Status, type StatusTone } from './status'
 export { BlockedAction, Notice, type NoticeTone } from './notice'
 export {

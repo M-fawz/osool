@@ -37,8 +37,17 @@ import { describe, expect, it } from 'vitest'
 
 const APP = join(process.cwd(), 'src', 'app')
 
-/** Fields whose value must never reach a URL. */
-const SENSITIVE = /<Input[^>]*\bname="(password|confirm|newPassword|currentPassword|email)"/s
+/**
+ * Fields whose value must never reach a URL.
+ *
+ * `PasswordInput` is matched as well as `Input`. When the reveal control was
+ * added, every password field in the product changed component — and a pattern
+ * that only knew about `<Input` would have quietly stopped seeing the activate
+ * screen altogether, since both of its fields are passwords and it has no email
+ * field to fall back on. A guard that narrows itself when the code changes is
+ * worse than no guard, because the suite stays green while the coverage goes.
+ */
+const SENSITIVE = /<(?:Password)?Input[^>]*\bname="(password|confirm|newPassword|currentPassword|email)"/s
 
 function tsxFilesUnder(dir: string): string[] {
   const out: string[] = []

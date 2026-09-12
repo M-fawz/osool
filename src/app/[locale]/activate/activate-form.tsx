@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from '@/i18n/navigation'
 import { authClient } from '@/lib/auth/client'
 import { useHydrated } from '@/lib/hooks/use-hydrated'
-import { BlockedAction, Button, Field, Input, Notice } from '@/components/ui/primitives'
+import { BlockedAction, Button, Field, Notice, PasswordInput } from '@/components/ui/primitives'
 
 const MIN_PASSWORD_LENGTH = 12
 
@@ -98,8 +98,16 @@ export function ActivateForm({
         error={problem === 'tooShort' ? labels.tooShortWhy! : undefined}
         required
       >
-        <Input name="password" type="password" dir="ltr" autoComplete="new-password" required
-          minLength={MIN_PASSWORD_LENGTH} disabled={problem === 'invalidToken'} />
+        <PasswordInput
+          name="password"
+          dir="ltr"
+          autoComplete="new-password"
+          required
+          minLength={MIN_PASSWORD_LENGTH}
+          disabled={problem === 'invalidToken'}
+          showLabel={labels.showPassword!}
+          hideLabel={labels.hidePassword!}
+        />
       </Field>
 
       <Field
@@ -108,8 +116,16 @@ export function ActivateForm({
         error={problem === 'mismatch' ? labels.mismatchWhy! : undefined}
         required
       >
-        <Input name="confirm" type="password" dir="ltr" autoComplete="new-password" required
-          minLength={MIN_PASSWORD_LENGTH} disabled={problem === 'invalidToken'} />
+        <PasswordInput
+          name="confirm"
+          dir="ltr"
+          autoComplete="new-password"
+          required
+          minLength={MIN_PASSWORD_LENGTH}
+          disabled={problem === 'invalidToken'}
+          showLabel={labels.showPassword!}
+          hideLabel={labels.hidePassword!}
+        />
       </Field>
 
       <Button type="submit" size="touch" className="w-full" busy={busy || !ready}

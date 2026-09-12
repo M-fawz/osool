@@ -229,7 +229,9 @@
     "remove": "Remove",
     "edit": "Edit",
     "confirm": "Confirm",
-    "notRecorded": "Not recorded"
+    "notRecorded": "Not recorded",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
   },
   "errors": {
     "required": "This field is required.",

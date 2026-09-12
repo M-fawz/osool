@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from '@/i18n/navigation'
 import { signIn } from '@/lib/auth/client'
 import { useHydrated } from '@/lib/hooks/use-hydrated'
-import { BlockedAction, Button, Field, Input } from '@/components/ui/primitives'
+import { BlockedAction, Button, Field, Input, PasswordInput } from '@/components/ui/primitives'
 
 /**
  * Sign-in.
@@ -128,7 +128,14 @@ export function SignInForm({
       </Field>
 
       <Field label={labels.password!} htmlFor="password" required>
-        <Input name="password" type="password" dir="ltr" autoComplete="current-password" required />
+        <PasswordInput
+          name="password"
+          dir="ltr"
+          autoComplete="current-password"
+          required
+          showLabel={labels.showPassword!}
+          hideLabel={labels.hidePassword!}
+        />
       </Field>
 
       <Button

@@ -26,6 +26,7 @@ export default async function SignUpPage({ params }: { params: Promise<{ locale:
   const loc = locale as Locale
   const t = await getTranslations('signUp')
   const tApp = await getTranslations('app')
+  const tCommon = await getTranslations('common')
 
   return (
     <div className="flex min-h-dvh flex-col bg-paper-sunk">
@@ -70,6 +71,8 @@ export default async function SignUpPage({ params }: { params: Promise<{ locale:
                 email: t('email'),
                 emailHint: t('emailHint'),
                 password: t('password'),
+                showPassword: tCommon('showPassword'),
+                hidePassword: tCommon('hidePassword'),
                 passwordHint: t('passwordHint'),
                 submit: t('submit'),
                 submitting: t('submitting'),

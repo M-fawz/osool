@@ -2,7 +2,8 @@
 
 import * as React from 'react'
 import { cn } from '@/lib/cn'
-import { Icon, AlertTriangle } from './icon'
+import { Icon, AlertTriangle, Eye, EyeOff } from './icon'
+import { useHydrated } from '@/lib/hooks/use-hydrated'
 import { useFieldError } from '@/components/forms/form-state'
 
 /**
@@ -40,6 +41,100 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
     return <input ref={ref} className={cn(controlBase, controlSize, className)} {...props} />
   },
 )
+
+/**
+ * A password field with a reveal control.
+ *
+ * ── Why a register wants this ────────────────────────────────────────────
+ *
+ * A masked field is the right default: this screen is used at a counter, in an
+ * office, with other people behind the person typing. But a password that can
+ * only ever be typed blind is also the single most common reason a correct
+ * credential is reported as a rejected one — and on this product the refusal
+ * copy deliberately declines to say *which* of the two fields was wrong
+ * (see the sign-in form), so there is nothing else to go on. The reveal is how
+ * somebody checks their own typing before blaming the system.
+ *
+ * ── The details that are easy to get wrong ───────────────────────────────
+ *
+ * `type="button"`. A `<button>` inside a form defaults to `type="submit"`, so
+ * without this, revealing the password submits the form.
+ *
+ * The label is a prop, not a string in here. Everything in this product is
+ * Arabic first, and an English `aria-label` on an Arabic screen is the kind of
+ * omission only a screen-reader user meets.
+ *
+ * The space for the control is reserved unconditionally and matches its width,
+ * so the text never runs under the icon and nothing moves when the control
+ * appears. 44px is the touch minimum from 03-DESIGN-DIRECTION, which this has
+ * to meet in both axes because officials use this on a phone.
+ *
+ * That reservation is written on the wrapper rather than as `pe-11` on the
+ * input, and the reason is a bug this had on its first run. A password field
+ * carries `dir="ltr"`, because a password beginning with `!` renders with the
+ * symbol at the wrong end inside Arabic text — it is a Latin island, in the
+ * sense of the `Ltr` component. But a logical property always resolves against
+ * the element's *own* direction, so on an Arabic screen `pe-11` padded the
+ * right of the field while the button sat at the page's end, on the left. The
+ * two were on opposite sides and a revealed password ran straight under the
+ * icon. The variant is evaluated on the wrapper, which has the page's
+ * direction, and what it sets on the input is physical — so the padding and
+ * the control cannot disagree about which side they are on.
+ *
+ * The button renders only once hydrated. Before that its handler does not
+ * exist, and a control that is drawn but inert is worse than one that is not
+ * drawn yet — the space it will occupy is already reserved, so its arrival
+ * shifts nothing. This is the same reasoning as the submit gate in
+ * src/lib/hooks/use-hydrated.ts, for the same window.
+ *
+ * Revealing is not persisted anywhere. It resets on every render of the
+ * screen, because "show my password" is a decision about this moment and this
+ * room, and a remembered one would eventually be wrong.
+ */
+export const PasswordInput = React.forwardRef<
+  HTMLInputElement,
+  React.InputHTMLAttributes<HTMLInputElement> & {
+    /** Accessible name for the control while the password is hidden. */
+    showLabel: string
+    /** Accessible name for the control while the password is shown. */
+    hideLabel: string
+  }
+>(function PasswordInput({ className, showLabel, hideLabel, ...props }, ref) {
+  const hydrated = useHydrated()
+  const [shown, setShown] = React.useState(false)
+
+  return (
+    <div className="relative ltr:[&>input]:pr-11 rtl:[&>input]:pl-11">
+      <input
+        ref={ref}
+        {...props}
+        type={shown ? 'text' : 'password'}
+        className={cn(controlBase, controlSize, className)}
+      />
+      {hydrated ? (
+        <button
+          type="button"
+          onClick={() => setShown((v) => !v)}
+          // The pressed state is what tells a screen reader whether the
+          // password is currently visible; the label alone would only say what
+          // the next click does.
+          aria-pressed={shown}
+          aria-label={shown ? hideLabel : showLabel}
+          aria-controls={props.id}
+          // Never a tab stop between the password and the submit button by
+          // accident — it is reachable, but after the field it belongs to.
+          className={cn(
+            'absolute inset-y-0 end-0 flex w-11 items-center justify-center',
+            'text-ink-muted transition-colors hover:text-ink',
+            'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-navy-600',
+          )}
+        >
+          <Icon as={shown ? EyeOff : Eye} size="sm" />
+        </button>
+      ) : null}
+    </div>
+  )
+})
 
 export const Textarea = React.forwardRef<
   HTMLTextAreaElement,
