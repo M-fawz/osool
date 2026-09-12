@@ -12,22 +12,23 @@ Phase 3 — making the system demonstrable end to end.
 
 ## CURRENT STATUS
 
-_Last updated 2026-09-08, end of session._
+_Last updated 2026-09-12, end of session._
 
 | | |
 |---|---|
 | **Branch** | `main` |
-| **Commit** | `2e30961` — pushed; remote and local agree |
-| **Session** | 2026-09-07: 11 commits from `71bfc60`. 2026-09-08: 2 commits from `de3341c` |
-| **Tests** | **188 passing / 22 files / 0 failed / 0 skipped** (was 181 / 21) |
-| **Full gate** | `npm run ci` → **exit 0** — typecheck · lint · no-deletes · one-archiver · i18n · tests · build |
-| **Browser** | `npm run qa:browser` → **56 passed, 0 failed** (new this session) |
-| **Local database** | Embedded PostgreSQL 16 on `127.0.0.1:5433`, healthy |
-| **Local demo** | **Working end to end.** Registration, sign-in, application, upload, register search, appointment booking, all eleven roles, Arabic and English, desktop and phone |
+| **Session** | 2026-09-07: 11 commits from `71bfc60`. 2026-09-08: 3 commits from `de3341c`. 2026-09-09 and 2026-09-10: work completed but **never committed** — a machine shutdown left it in the working tree. 2026-09-12: that work committed, plus the items below |
+| **Tests** | **198 passing / 23 files / 0 failed / 0 skipped** |
+| **Full gate** | `npm run ci` **exit 0** — typecheck, lint, no-deletes, one-archiver, i18n, tests, build |
+| **Browser** | `npm run qa:browser` **97 passed, 0 failed** against a production build (was 96) |
+| **Live server** | `node scripts/qa/live-probe.mjs` **13 passed, 2 failed** — the two failures are the proof it is stale. See P0.16 |
+| **i18n** | 914 keys per locale, parity enforced |
+| **Local database** | Embedded PostgreSQL 16 on `127.0.0.1:5433`, healthy, **0 failed migrations**. 4,631 users, 3,194 applications, 359 registrations, 389 appointments, 2,017 documents, 6,509 audit events |
+| **Local demo** | **Working end to end**, proved in a browser this session. Registration, sign-in with a password reveal, application, upload, register search, public verification, appointment booking and cancellation, all eleven roles, Arabic and English, desktop and phone |
+| **Demonstrate from** | **`npm run build && npm start`, not `npm run dev`** — see P0.18. On this machine `next dev` takes 50–160s to compile a route the first time it is opened |
 | **Production code** | `main` is current |
-| **Production deployment** | **Still serving the pre-session build.** No CSP header and `/api/health` returns HTML, which is how you can tell from outside |
-| **Production database** | **Does not exist.** `db.wqwapqlzplixsvwcndjc.supabase.co` → NXDOMAIN |
-| **Why the deployment is stuck** | `scripts/vercel-build.mjs` runs `prisma migrate deploy` on production before `next build`. The database is unreachable, the step fails, the build fails, and the deployment is never promoted — so the old one keeps serving. Working as designed; the input is missing |
+| **Production deployment** | `76.13.57.79:3000` is **reachable, rendering, and stale** — it predates `9923e16`, so the credential-in-URL defect is live there. Needs a person with shell access; the commands are in P1.2 |
+| **Infrastructure required** | **PostgreSQL 16 and any S3-compatible bucket.** Supabase is not required and never was — see P1.0 |
 
 ---
 
@@ -328,7 +329,391 @@ Everything required to demonstrate Osool end to end.
 
 ---
 
+#### P0.11 — The password field could not be checked by the person typing it
+
+- **Status:** VERIFIED
+- **Completed:** 2026-09-09
+- **Files:** `src/components/ui/form.tsx` (`PasswordInput`),
+  `src/components/ui/icon.tsx`, `src/components/ui/primitives.tsx`,
+  `src/app/[locale]/login/{page.tsx,sign-in-form.tsx}`,
+  `src/app/[locale]/activate/{page.tsx,activate-form.tsx}`,
+  `src/app/[locale]/signup/{page.tsx,signup-form.tsx}`,
+  `messages/{ar,en}.json`
+- **Implementation:** one `PasswordInput`, used by all three credential screens.
+  Masked by default; an eye control at the end of the field toggles it. The
+  control is `type="button"`, so it cannot submit the form it sits in; it
+  carries `aria-pressed` as well as an `aria-label`, so a screen reader is told
+  the state and not only the next action; it takes both labels as props, so the
+  Arabic screen announces Arabic; it is 44px in both axes; and it renders only
+  once hydrated, into space already reserved for it, so nothing moves when it
+  arrives. No new dependency — `lucide-react` was already the icon set.
+- **A bug this shipped with, found in a screenshot and fixed:** the field is
+  `dir="ltr"`, because a password beginning with an exclamation mark renders
+  with the symbol at the wrong end inside Arabic otherwise. A logical property
+  resolves against the element's *own* direction, so `pe-11` on the input padded
+  its right on an Arabic screen while the button sat at the page's end, on the
+  left — and a revealed password ran straight under the icon. Every assertion
+  passed while that was true: the control was visible, on the correct side, and
+  worked. The reservation now sits on the wrapper, where the page's direction
+  applies, and what reaches the input is physical.
+- **Test evidence:** `tests/unit/password-reveal.test.ts`, 10 tests, proved in
+  both directions — reverting the sign-in screen to a bare
+  `<Input type="password">` fails it; restoring it passes.
+- **Browser evidence:** `npm run qa:browser` section 1b, 24 checks, English and
+  Arabic: masked to begin with, click reveals, click again hides, the form is
+  not submitted by either mouse or keyboard, the control is the next tab stop
+  after the field, `aria-pressed` follows the state, the control is on the right
+  in English and the left in Arabic, it meets 44px, and — the check that would
+  have caught the bug above — the reserved padding is on the same side as the
+  control. Plus a tap test at 390px in Arabic.
+- **Remaining issue:** none.
+
+#### P0.12 — The queue harness proved paging existed, not that it went deep
+
+- **Status:** VERIFIED
+- **Completed:** 2026-09-09
+- **Files:** `scripts/qa/browser.mjs` (section 3)
+- **Finding:** "paging controls are rendered" would pass for controls that
+  render and then return the same fifty rows. The original defect — a hard
+  `take: 50` — deserves a check that names ordinals.
+- **Implementation:** the harness walks to rows 51, 101 and 500 of the intake
+  queue, reads the row sitting at each, and asserts they are distinct records
+  rather than the first page served again. It then walks to the **last** row,
+  whose number it takes from the total the screen itself reports — which is the
+  claim that actually matters: there is no cap.
+- **Browser evidence:** rows 51, 101, 500 and 814 (the last) all reachable and
+  all distinct.
+- **Remaining issue:** rows 4,999 and 5,000 were asked for and **do not exist**.
+  The deepest queue the fixture fills is intake, at 814 files. The harness
+  prints those two as `n/a` with the real total rather than passing or skipping
+  them silently. Seeding five thousand applications to satisfy an ordinal would
+  be fixture theatre; the cap is disproved at 814.
+
+#### P0.13 — The appointment harness had quietly stopped booking anything
+
+- **Status:** VERIFIED
+- **Completed:** 2026-09-09
+- **Files:** `scripts/qa/browser.mjs` (section 5, and the `submitAction` helper)
+- **Finding:** the booking step ran only when no booking existed. After the
+  first run, `nile` kept the appointment it had been given, the already-booked
+  branch was taken every time, and the single most important journey in the
+  demonstration was never exercised again. It reported "open slots are offered"
+  and moved on.
+- **Second finding, worse:** the diary assertion was "the page has more than 200
+  characters", against whatever session the previous section happened to leave
+  behind. A four-part refusal screen satisfies that comfortably, so the check
+  would have gone on passing for a role refused the diary outright.
+- **Implementation:** an existing booking is now cancelled first — turning the
+  obstacle into the proof that cancellation works — and a booking is then driven
+  every run. Added: places-left shown per slot; the confirmation states where as
+  well as when; a second booking refused while one is live; and the booking
+  looked for in the Authority's diary by walking the days forward until it is
+  found, which also exercises the day navigation.
+- **A harness bug found on the way:** a Server Action does not navigate, so
+  `waitForLoadState('networkidle')` after the click returns before the action
+  has even been dispatched. Two runs reported a cancellation as failed while the
+  database showed it cancelled, with the harness's own reason written on it.
+  Both submissions now go through `submitAction`, which arms the response wait
+  before the click.
+- **Browser evidence:** 13 checks in section 5, all passing — cancel, book,
+  confirm with when, where, who and what to bring, duplicate refused, Arabic,
+  and the booking found in the clerk's diary on its day.
+- **Remaining issue:** rescheduling exists in the domain
+  (`rescheduleAppointmentAction`) and is not driven through the interface here.
+
+#### P0.14 — The server at 76.13.57.79:3000 is serving code from before 8 September
+
+- **Status:** VERIFIED (as a finding). The server is **read-only this session by
+  the user's explicit instruction** — no SSH, no deployment, no restart, no
+  change to its data. What follows is what it does, not what was done to it.
+- **Completed:** 2026-09-10
+- **What it is:** a genuinely remote machine, not this one — its address is
+  `76.13.57.79`, this machine's public address is `197.50.88.157`, and nothing
+  listens on `:3000` locally when the dev server is stopped. It answers
+  `/api/health` with `{"status":"ok"}`, `deployment: development`,
+  `email: console`, `storage: local`, and a database check that passes in 138ms.
+  So: a development-mode Next server, with a working database of its own.
+- **How the version was established**, without any build metadata being exposed:
+
+  | Probe | Live server | This repository at `dc1960e` |
+  |---|---|---|
+  | `<form>` on `/en/login` | `<form class="space-y-5" noValidate>` | `<form method="post" …>` |
+  | Reveal control on the password field | absent | present |
+  | `/en/signup` | 200 | 200 |
+
+  The missing `method="post"` is decisive. It is precisely what `9923e16`
+  ("a credential form must not fall back to a GET before hydration", 8 Sep)
+  added, and it is absent — so the deployed tree predates that commit. The
+  signup screen is present, so it postdates `5922b0c`. The server is somewhere
+  between the two, and is **at least two days and four commits behind `main`**.
+- **What that costs, in order of seriousness:**
+  1. **The credential leak is live on that server.** Until React hydrates, the
+     sign-in form is a plain HTML form with no `method`, so an Enter key or a
+     click performs the HTML default — a GET carrying `email` and `password` as
+     query parameters, into the address bar, the history, the access log and the
+     `Referer` of whatever loads next. This is the defect `9923e16` exists to
+     fix and it is still there.
+  2. No password reveal, in either language — confirmed by eye in a browser.
+  3. Its database holds **4 registrations and an empty intake queue**, against
+     359 registrations and 813 submitted applications locally. The staged
+     workflow dataset that makes a demonstration worth watching is not on it.
+- **What does work there**, driven in a real browser: the login screen renders
+  (no blank page), `clerk@osool.test` signs in and lands on the dashboard with
+  the URL clean of credentials, `/en/register` lists its four registrations with
+  every filter control, `/verify/2026%2F0001` answers signed out, and Arabic is
+  correct — `/login` is the Arabic screen at `<html lang="ar" dir="rtl">`,
+  because Arabic is the unprefixed default locale.
+- **Conclusion:** the server proves the application runs on a machine that is
+  not this one, and is **not the right thing to present from** — it is behind,
+  it carries a credential defect that `main` has already fixed, and its register
+  is nearly empty. Present from local. Updating it needs an access path the user
+  does not currently have.
+
+#### P0.15 — Two browser-harness failures that were the harness, not the product
+
+- **Status:** VERIFIED
+- **Completed:** 2026-09-10
+- **Files:** `scripts/qa/browser.mjs`
+- **Finding 1 — `ar: the reveal control is on the screen`.** The single check
+  that failed while its own eleven neighbours passed: in the same run and the
+  same page, clicking the control revealed the password, it sat on the left, it
+  met the touch minimum, and the keyboard drove it. A control cannot be operated
+  and absent at once. The assertion was `await eye.isVisible()`, sampled once
+  and immediately; the control is deliberately not rendered until the page has
+  hydrated, so the line raced hydration rather than testing it, and every later
+  assertion passed because Playwright's auto-waiting gave hydration the time
+  this one did not. `networkidle` does not help — it says the transport is
+  quiet, not that React has attached.
+- **Finding 2 — two roles "could not reach" their screens.** `AML_SUPERVISOR`
+  timed out on `/en/supervision`; `ANALYST` reached the same route seconds
+  later. `SYSTEM_ADMIN` timed out on `/en/admin/users`. `next dev` compiles a
+  route on the first request that asks for it, and Playwright's default
+  navigation timeout is 30s — so the first visitor to a heavy screen paid for
+  the compilation, exceeded the budget, and the second inherited a warm route
+  and passed. Read literally the run reported that one role could reach a screen
+  and another could not, which would be a segregation-of-duties defect. It was a
+  cold cache.
+- **What changed:** the reveal check waits for the control (15s) instead of
+  sampling it, and the default navigation timeout is raised to 90s with the
+  reason written down. Both were raised, not removed — a control that never
+  appears and a route that never answers still fail the run.
+- **Product verification, separately, by hand in a browser**, because a harness
+  fix must not be the evidence that the thing it tests works: on the Arabic
+  sign-in screen the field is masked, the control sits at the field's left, one
+  click reveals `!NotARealPassword123` with the `!` at the correct end, the icon
+  changes to eye-off, the form does not submit, and the text stops before the
+  icon. English is the mirror of that, control on the right.
+
+#### P0.17 — The harness kept failing on the compiler and blaming the product
+
+- **Status:** COMPLETED
+- **Completed:** 2026-09-12
+- **Files:** `scripts/qa/browser.mjs`
+- **Severity:** it was not a product defect, but it was worse than one in a
+  specific way — it produced **false reports about the product**, twice about
+  segregation of duties, which is the thing this register exists to prove.
+- **Finding 1 — the 90-second budget was set on one page out of five.** P0.15
+  raised `setDefaultNavigationTimeout(90_000)` after `/en/supervision` timed
+  out on a cold route. It was written on `page`, the only page that existed at
+  the time. The harness goes on to create **four more** contexts — the signed-out
+  visitor, the booking broker, a second broker, the phone — and each one
+  silently kept Playwright's 30-second default. The run then died exactly the
+  way P0.15's own comment says it must not: `/en/verify` was cold, the visitor
+  context gave it 30 seconds, and the harness aborted **after** section 4 —
+  so sections 5, 6 and 7 never ran at all.
+- **Fix 1:** the budget moved to a `newContext()` helper that every context now
+  goes through, so it applies to every page opened from one, including a page
+  added later by somebody who never reads the comment.
+- **Finding 2 — raising budgets was losing the race slowly.** With the visitor
+  fixed, the next run failed on `CARD_ISSUER reaches /en/issuance` at the
+  60-second `waitForURL` inside `signIn`, and then aborted on `/ar/signup` at
+  the new 90-second navigation budget. Measured directly: **`/en/issuance`
+  takes 65 seconds to compile from cold** — five seconds past the budget. Three
+  runs, three different doors, three different numbers.
+- **Why raising them again would have been wrong:** each number would have to
+  exceed the worst cold compile on the slowest machine that will ever run this,
+  and nobody knows that number. Worse, every one of these failures **named a
+  role and a screen**: read literally, the run said `CARD_ISSUER` could not
+  reach issuance while `DATA_MANAGER` could — which is the shape of a real
+  authorisation defect, and is what someone reading the log would have
+  reported.
+- **Fix 2 — the harness now takes its own advice.** `DEMO-SCRIPT.md` has always
+  told a presenter to warm the routes before presenting, for precisely this
+  reason. A new section 0 requests all 26 routes the run will visit, once, with
+  a 180-second budget, before any assertion exists to be distorted. It uses
+  `request.get` rather than `goto` — the compile happens on the server, so
+  there is nothing to render — and it is skipped entirely against a production
+  build, where there is nothing to compile.
+- **What it deliberately does not do:** assert anything, or swallow anything
+  that matters. It ignores status codes because most of these routes correctly
+  answer 307 to a signed-out visitor. A route that is genuinely broken still
+  fails its own assertion later, in the section that cares, against the budget
+  it always had. What changed is only that the budget is spent on the product
+  instead of on the compiler.
+- **One thing that was *not* a defect:** the run appeared to "exit 0" after
+  crashing. It does not — `run().catch()` exits 2, and it did. The 0 came from
+  `tail` at the end of the pipeline the output was read through.
+
+#### P0.18 — Demonstrate from a production build; `next dev` is unusable on this machine
+
+- **Status:** VERIFIED
+- **Completed:** 2026-09-12
+- **Files:** `docs/DEMO-SCRIPT.md`
+- **How it surfaced:** while proving P0.17. With the warm-up added, the harness
+  still could not finish against `next dev` — and the server log says why, in
+  its own words:
+
+  ```
+  ✓ Compiled /[locale]/signup in 162.4s (2169 modules)
+  GET /en/application 200 in 76715ms
+  GET /en/audit 200 in 77812ms
+  ```
+
+  The warm-up measured the same thing across 26 routes: **480 seconds** to
+  compile them all, with `/en/admin/users` alone taking **122s** and
+  `/en/issuance` **75s**. Two harness runs also produced a failure each —
+  `CARD_ISSUER reaches /en/issuance` and `SYSTEM_ADMIN reaches /en/admin/users`
+  — and **both pass against a production build**, which is the proof that
+  neither was a product defect.
+- **What it is:** the development server compiles on demand and this machine is
+  slow enough that the compile dominates everything. It also degrades as it
+  runs: the dev worker was measured at **1,041 MB** before it stopped answering
+  at all, and any file written anywhere in the project — a note in this very
+  document — invalidates its watcher and makes it recompile.
+- **What changed:** `DEMO-SCRIPT.md` now opens with the production build as the
+  way to present, and explains the one thing that is genuinely different:
+  in development the sign-up screen prints the activation link on the page,
+  and a production build withholds it on purpose, because that link is a bearer
+  token for the account. The link is still shown — in the terminal running the
+  server, in a bordered box from the `console` email driver, which is arguably a
+  better thing to show an audience anyway: *this is the email the Authority
+  would have sent.*
+- **The numbers that matter:** against the production build the same harness
+  runs **97 passed, 0 failed**, and no route takes longer than a moment.
+
+#### P0.16 — The live server, re-proved from the outside, and a probe that can repeat it
+
+- **Status:** VERIFIED (as a finding). The server remains **read-only** — nothing
+  was written to it, no session was created on it, no form was submitted.
+- **Completed:** 2026-09-12
+- **Files:** `scripts/qa/live-probe.mjs` (new), `scripts/qa/accounts.mjs` (new)
+- **Why it was done again:** P0.14 established the deployment was stale on
+  10 September by hand. A finding established by hand decays — the next person
+  to ask "is it current yet?" has to redo the whole investigation. This turns it
+  into one command.
+- **What the probe is careful not to do.** `browser.mjs` proves the product by
+  using it: it submits applications, books and cancels appointments, and signs in
+  as eleven roles. Every one of those is a write, and under rule 2 nothing this
+  product writes can be removed afterwards. Pointing it at a deployment that is
+  not ours to seed would leave permanent fixture data in it. So the probe reads
+  public pages, reads headers, and stops — and prints, at the end, the list of
+  things it deliberately did not test, so a green run is never mistaken for a
+  full one.
+- **How a version is established without any build metadata:** not by asking the
+  server what it is — a stale build reports the version it was built from — but
+  by looking for the *fingerprints* of specific commits in the markup it sends.
+
+  | Fingerprint | Commit it proves | 2026-09-12 |
+  |---|---|---|
+  | `<form method="post">` on `/en/login` | `9923e16`, 8 Sep | **absent** |
+  | A `button[aria-pressed]` on the password field | the reveal, uncommitted until today | **absent** |
+  | `script-src` carries `'nonce-…'` | `f3daea8`, the blank-page repair | present |
+
+- **Result: 13 passed, 2 failed.** The two failures are the two fingerprints,
+  and they are the finding rather than a defect in the probe.
+- **What is healthy there:** every public page renders text rather than a blank
+  screen, `/api/health` reports its own database reachable in 4ms, `/ar/verify`
+  is `dir="rtl"` and `/en/verify` is `dir="ltr"`, and there were **no console
+  errors and no failed or 5xx requests** across the pages visited.
+- **Two things the probe added that P0.14 did not have:**
+  1. `/en/register` redirecting to `/en/login` there is **correct**, not a
+     defect. `src/app/[locale]/register/page.tsx` calls `guard()` — the register
+     list is the officials' view; `/verify` is the public one. Worth recording
+     because a 307 on a register route reads like a fault at a glance.
+  2. `script-src` carries `'unsafe-eval'`, and `src/middleware.ts:78` only adds
+     that when `NODE_ENV === 'development'`. Together with the health endpoint
+     reporting `deployment: development`, that is two independent signals that
+     **the host is running a development server, not a production build.**
+     Consequences: no production build optimisation, verbose errors reachable by
+     a visitor, and `'unsafe-eval'` in the policy on a public address.
+- **Unchanged and still the headline:** the credential-in-URL defect `9923e16`
+  fixes is **live on that server**. Until React hydrates, its sign-in form has no
+  `method`, so Enter performs a GET carrying the password into the address bar,
+  the history, the access log and the next request's `Referer`.
+
+---
+
 ### P1 — PRODUCTION STABILITY
+
+#### P1.0 — What this product actually requires of a host, and what it does not
+
+- **Status:** VERIFIED
+- **Completed:** 2026-09-12
+- **Why it was asked:** the roadmap, `.env.prod.pulled` and P1.1 all speak of a
+  Supabase project, and that has been read as "Osool needs Supabase". It does
+  not, and the difference matters: it is the gap between waiting on one vendor's
+  account and being able to stand the register up on any PostgreSQL in the
+  country — which, for a government register, is not a small distinction.
+- **How it was established:** by looking for the coupling rather than for the
+  name. There is **no Supabase package in `package.json`** — no `@supabase/*`,
+  no `postgrest`, no `gotrue`. Supabase appears in exactly three places in the
+  whole source tree, and all three are comments naming it as an *example*:
+  `src/lib/env.ts:84` cites its 6543 as one transaction-mode pooler among
+  others (PgBouncer, Neon), `src/lib/env.ts:146` cites its Storage as one
+  S3-compatible endpoint, and `src/app/api/health/route.ts:11` uses a dead
+  Supabase project as the illustration of why the health check is deep.
+- **What the product is actually bound to:**
+
+  | Dependency | Bound to | Satisfied by |
+  |---|---|---|
+  | Database | **PostgreSQL 16**, through Prisma | any PostgreSQL — managed or self-hosted. `DATABASE_URL`, plus `DIRECT_DATABASE_URL` only if the first is a transaction-mode pooler, because migrations cannot run through one |
+  | Object storage | **any S3-compatible endpoint**, through `@aws-sdk/client-s3` | AWS S3, MinIO, Ceph, R2, Supabase Storage — `S3_ENDPOINT` with `forcePathStyle`, or none for AWS proper |
+  | Authentication | **Better Auth, against the same PostgreSQL** | nothing external. There is no identity provider to procure |
+  | Email | a driver, not a vendor | `resend` in production, `manual` or `console` otherwise |
+  | Scheduler | an HTTP caller with a shared secret | `vercel.json` crons, or cron/systemd calling `/api/cron/sweep` |
+
+- **Conclusion:** **Supabase is optional, and is only ever a PostgreSQL host and
+  an S3-compatible bucket.** No Supabase-specific service is used — not its
+  auth, not its realtime, not its edge functions, not its client library. A
+  plain PostgreSQL 16 with any S3-compatible bucket is sufficient and complete.
+  Nothing in the code has to change to move off it; P1.1 needs *a database*, not
+  *that* database.
+
+#### P1.0b — The local database, inspected rather than assumed
+
+- **Status:** VERIFIED
+- **Completed:** 2026-09-12
+- **Files:** `scripts/qa/accounts.mjs` (new)
+- **Why a script:** "the database is fine" is the kind of claim that is made
+  from memory. This asks it — over `pg` rather than through Prisma, so it still
+  answers on a day the application will not start, which is exactly when the
+  question gets asked.
+- **Structural health:** **0 failed or unfinished migrations** — every row in
+  `_prisma_migrations` has a `finished_at` and none has a `rolled_back_at`. The
+  four tables the workflow depends on all answer. Embedded PostgreSQL 16 on
+  `127.0.0.1:5433`.
+- **Contents:** 4,631 accounts · 3,194 applications · 359 registrations ·
+  389 appointments · 2,017 documents · 6,509 audit events · 55,030 notifications.
+  Applications reach every stage the workflow defines: 1,386 `DRAFT`,
+  813 `SUBMITTED`, 358 `ACTIVE`, 322 `UNDER_EXAMINATION`, 202 `UNDER_REVIEW`,
+  46 `APPROVED`, 36 `AWAITING_COMPLETION`, 28 `AWAITING_PAYMENT`, and one each of
+  `CARD_ISSUED`, `UNDER_INTAKE` and `REJECTED`. Every stage has at least one file
+  to open, which is what makes the walkthrough demonstrable.
+- **Test residue, documented and deliberately left alone.** Of the 4,608 `.test`
+  accounts, roughly 4,560 are integration-test fixtures in two shapes:
+  `test.broker_owner.<hex>@osool.test` from the load and pagination fixtures, and
+  `<role>.<hex>@osool.test` from per-run role fixtures. They are harmless to a
+  demonstration and **must not be cleared**: rule 2 admits no deletion, the audit
+  chain is hash-linked over the events that created them, and a truncate would
+  break the chain to make a count look tidy. The named accounts a person actually
+  signs in as are the ones without a hex suffix.
+- **One detail worth knowing before a walkthrough:** the load fixtures have no
+  credential row at all (`password: NONE`), so they cannot sign in even by
+  accident. The `<role>.<hex>` fixtures do have passwords, and several
+  `examiner.<hex>` accounts are `SUSPENDED` and several `broker.<hex>` accounts
+  are `PENDING_ACTIVATION` — states their tests put them in. None of that touches
+  the named demonstration accounts, every one of which is `ACTIVE`, verified, and
+  has a password set.
 
 #### P1.1 — Provision the production database
 
@@ -339,9 +724,73 @@ Everything required to demonstrate Osool end to end.
 
 #### P1.2 — Deploy current code to production
 
-- **Status:** BLOCKED on P1.1
-- **Verification:** production smoke tests against the deployed commit, not the
-  Vercel build log.
+- **Status:** BLOCKED — not on P1.1 any more, and not on anything in this
+  repository. `76.13.57.79:3000` already has a working database of its own
+  (`/api/health` reports it reachable in 4ms). What is missing is **shell access
+  to that machine**, which nobody working in this repository has.
+- **Verification:** production smoke tests against the deployed commit, not a
+  build log.
+
+##### What the person with access to `76.13.57.79` needs to run
+
+Five commands, in this order, in the directory the application is served from.
+Nothing here needs a decision — if any step fails, stop and report the output
+rather than working around it.
+
+```bash
+git fetch origin && git checkout main && git pull            # 1. current code
+npm ci                                                       # 2. exact lockfile
+npx prisma migrate deploy                                    # 3. schema
+npm run build                                                # 4. production build
+# 5. restart the process however it is supervised there
+#    (pm2 restart <name> · systemctl restart <unit> · docker compose up -d --build)
+```
+
+**Step 4 matters more than it looks.** That server is currently running a
+**development** server — two independent signals say so (P0.16). A development
+server on a public address is slower, returns verbose errors to visitors, and
+carries `'unsafe-eval'` in its Content Security Policy. `npm run build` followed
+by `npm start`, with `NODE_ENV=production` in its environment, is what it should
+be running.
+
+##### How to confirm it worked, from anywhere
+
+```bash
+node scripts/qa/live-probe.mjs                 # defaults to that host
+QA_LIVE=http://<host>:<port> node scripts/qa/live-probe.mjs
+```
+
+It must report **15 passed, 0 failed**. The two checks that currently fail are
+the fingerprints of the missing commits; when they pass, the deployment is
+current. If `deployment environment reported` still says `development`, step 4
+or the process environment did not take.
+
+##### Why this is not optional
+
+The credential-in-URL defect (P0.9) is **live on that server today**. Until this
+deployment happens, every sign-in attempt made there before the page finishes
+hydrating puts the password in the URL, the browser history, and the server's
+own access log.
+
+#### P1.2b — `npm ci` was failing on production before the database was ever reached
+
+- **Status:** COMPLETED — this blocker is removed; promotion still needs P1.1
+- **Completed:** 2026-09-09
+- **Files:** `package-lock.json`
+- **Finding:** every production deployment since the one 28 days ago has ended
+  in `Error`, and this roadmap recorded the cause as the missing database. The
+  build log says otherwise: it never got that far. `npm ci` refused to install
+  at all — it can only install when `package.json` and `package-lock.json` are
+  in sync, and they were not, over transitive `@emnapi` WASM bindings.
+- **Why it was worth finding:** it was hidden behind a real blocker. Had the
+  database appeared, the deployment would still have failed, and the obvious
+  explanation would have been the wrong one.
+- **What changed:** `npm install --package-lock-only`. Nothing in
+  `package.json` moved; the diff is transitive `@emnapi` packages only.
+- **Verification:** `npm ci --dry-run` now resolves the tree cleanly, where it
+  previously exited `EUSAGE`.
+- **Remaining issue:** the deployment still cannot be promoted, now for the
+  original reason alone — `prisma migrate deploy` has no database to reach.
 
 #### P1.3 — CI actually gates
 
@@ -459,6 +908,12 @@ Everything required to demonstrate Osool end to end.
 
 | Decision | Outcome |
 |---|---|
+| Commit the 2026-09-09/10 work rather than redo it | The shutdown left two sessions' work uncommitted but complete. Verified against the gates first — 198 tests, 97 browser checks — then committed as it stood |
+| Do not run the writing harness against `76.13.57.79` | It submits applications and books appointments. Rule 2 means nothing it wrote could be removed from a register that is not ours to seed. A read-only probe was written instead |
+| Warm routes rather than raise timeouts again | Three runs, three different routes, three different budgets. `/en/admin/users` alone compiles in 122s, so no budget was ever going to be large enough |
+| Present from a production build | `next dev` on this machine compiles screens in 50–160s. The only thing lost is the on-page activation link, which the server terminal prints anyway |
+| Leave the test residue in the database | ~4,560 fixture accounts. Clearing them would break the audit chain to make a count look tidy, against rule 2 |
+| Do not add the INSPECTOR screen | Still no `REQ-*` behind which screens that role may see. Rule 3 — raised, not guessed |
 
 ---
 
@@ -467,3 +922,7 @@ Everything required to demonstrate Osool end to end.
 | Date | Entry |
 |---|---|
 | 2026-09-07 | Session opened. Verified current state against the repository rather than the prior report. Confirmed the queue truncation; **found that broker self-registration does not exist at all**. Roadmap rewritten around demonstrability. |
+| 2026-09-08 | The reported login failure was a pre-hydration GET fallback putting credentials in the URL, not an authentication defect. 28 of 28 accounts verified against their stored hashes. |
+| 2026-09-09 | Password reveal on all three credential screens, with an RTL padding bug found in a screenshot and now guarded. Queue paging proved to row 814. The appointment harness was silently skipping the booking it existed to prove; it now cancels, books, and finds the result in the Authority's diary. Production deployment unblocked one layer: `npm ci` had been failing on a stale lockfile. 198 tests, 96 browser checks. |
+| 2026-09-10 | The live server established as stale from the outside, without touching it. Two browser-harness failures found to be the harness rather than the product. |
+| 2026-09-12 | Resumed after a shutdown that left two sessions' work uncommitted. Verified it rather than redoing it: 198 tests, `npm run ci` exit 0. Live server re-proved stale and the probe made repeatable. Three harness defects fixed — a timeout set on one page out of five, budgets losing a race against a 122-second compile, and a run that aborted four sections early. **97 browser checks, 0 failed**, against a production build. Supabase established as not required. Work committed and pushed. |
