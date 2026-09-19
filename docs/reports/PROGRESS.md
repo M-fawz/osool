@@ -12,18 +12,18 @@ Phase 3 — making the system demonstrable end to end.
 
 ## CURRENT STATUS
 
-_Last updated 2026-09-12, end of session._
+_Last updated 2026-09-19, end of session._
 
 | | |
 |---|---|
 | **Branch** | `main` |
-| **Session** | 2026-09-07: 11 commits from `71bfc60`. 2026-09-08: 3 commits from `de3341c`. 2026-09-09 and 2026-09-10: work completed but **never committed** — a machine shutdown left it in the working tree. 2026-09-12: that work committed, plus the items below |
-| **Tests** | **198 passing / 23 files / 0 failed / 0 skipped** |
+| **Session** | 2026-09-07: 11 commits from `71bfc60`. 2026-09-08: 3 commits from `de3341c`. 2026-09-09 and 2026-09-10: work completed but **never committed** — a machine shutdown left it in the working tree. 2026-09-12: that work committed, plus the items below. 2026-09-19: the `Failed to fetch` incident (P0.19), and a sweep of every demo account that found P0.20 |
+| **Tests** | **216 passing / 24 files / 0 failed / 0 skipped** |
 | **Full gate** | `npm run ci` **exit 0** — typecheck, lint, no-deletes, one-archiver, i18n, tests, build |
-| **Browser** | `npm run qa:browser` **97 passed, 0 failed** against a production build (was 96) |
-| **Live server** | `node scripts/qa/live-probe.mjs` **13 passed, 2 failed** — the two failures are the proof it is stale. See P0.16 |
-| **i18n** | 914 keys per locale, parity enforced |
-| **Local database** | Embedded PostgreSQL 16 on `127.0.0.1:5433`, healthy, **0 failed migrations**. 4,631 users, 3,194 applications, 359 registrations, 389 appointments, 2,017 documents, 6,509 audit events |
+| **Browser** | `npm run qa:browser` **133 passed, 2 failed** against a production build. Sections 1–7: 97/97. §8 (dropped connection, new): 10/10. §9 (every demo account, new): 26 of 28 clean; both failures are the pre-existing React #418, P0.20 |
+| **Live server** | `node scripts/qa/live-probe.mjs` **13 passed, 2 failed** — the two failures are the proof it is stale. See P0.16. As of 2026-09-12; not re-run on 2026-09-19 |
+| **i18n** | 921 keys per locale, parity enforced |
+| **Local database** | Embedded PostgreSQL 16 on `127.0.0.1:5433`, healthy, **0 failed migrations**. 4,638 users, 3,196 applications, 361 registrations, 394 appointments, 2,035 documents, 7,185 audit events, chain intact |
 | **Local demo** | **Working end to end**, proved in a browser this session. Registration, sign-in with a password reveal, application, upload, register search, public verification, appointment booking and cancellation, all eleven roles, Arabic and English, desktop and phone |
 | **Demonstrate from** | **`npm run build && npm start`, not `npm run dev`** — see P0.18. On this machine `next dev` takes 50–160s to compile a route the first time it is opened |
 | **Production code** | `main` is current |
@@ -641,6 +641,58 @@ Everything required to demonstrate Osool end to end.
   `method`, so Enter performs a GET carrying the password into the address bar,
   the history, the access log and the next request's `Referer`.
 
+
+#### P0.19 — A dropped connection crashed every form and threw away what was typed
+
+- **Status:** VERIFIED
+- **Completed:** 2026-09-19
+- **Full account:** `docs/reports/INCIDENT-2026-09-19-FAILED-TO-FETCH.md`
+- **Reported as:** `TypeError: Failed to fetch at fetchServerAction`, after
+  `net::ERR_NETWORK_CHANGED` / `ERR_INTERNET_DISCONNECTED`, on the broker's entity step.
+  The step was replaced by "This page could not be shown" and seventeen typed fields were lost.
+- **Cause:** not the server. The machine changed network and the request never arrived. The
+  defect was that a Server Action whose `fetch` rejects is rethrown by `useActionState` into the
+  route error boundary, which unmounts the form. `ActionForm` restored fields after a *refusal*,
+  which is a returned value; a rejection never returned, so none of that ran. The same failure
+  was in all 23 `ActionForm` forms, the sign-up form, take-for-review, attendance marking (an
+  async transition: the whole appointments list went down) and declarations (an unhandled
+  rejection, and the result, including refusals, was discarded).
+- **What changed:** `src/lib/actions/unconfirmed.ts` turns a rejection into an `Unconfirmed`
+  outcome with one of three reasons: `connection`, `outdated` (redeployed under an open page),
+  or `fault` (server threw; digest shown, message never). `redirect()`/`notFound()` are rethrown.
+  `useGuardedAction` hands `useActionState` the raw Server Action until hydration and the
+  guarded one after, so the no-JavaScript form still posts natively (proved: hidden `$ACTION_*`
+  inputs, native POST answered by the server). Every caller draws a four-part caution notice and
+  keeps what was typed.
+- **Guards:** `tests/unit/unconfirmed-action.test.ts` (18 tests, including a source scan that
+  every `useActionState` goes through `useGuardedAction`); browser harness §8 (connection reset
+  while online, server 500, offline, unrecognised action, then recovery — 10 checks) and §9
+  (every documented demo account, every screen in its own navigation).
+- **Not done:** idempotency keys. After a `connection` failure a second press is safe for the
+  wizard's upserts and for transitions, but would record a second contract, slot set or fee
+  line if the first had landed. The notice says the screen cannot know; closing it properly is
+  a per-submission key on every writing action.
+
+#### P0.20 — An intermittent hydration mismatch (React #418) in production builds
+
+- **Status:** NOT STARTED — found, not fixed
+- **Found:** 2026-09-19, by the new §9 sweep, which is the first check that listens for page
+  errors on every screen.
+- **What is known:** `Minified React error #418` ("server rendered HTML didn't match the
+  client"), **5 times in about 830 page loads** across three full sweeps, plus twice in
+  targeted replays, on screens that differ between runs — `/en/issuance`, `/en/register`,
+  `/en/archive`, brokers' documents, declarations and review steps. Recoverable: React re-renders on
+  the client, nothing crashes, nothing visible changes. **Predates the P0.19 change** — reproduced
+  on a production build of `46dcc00` in a separate worktree. **Not reproduced in development**:
+  0 in 48 loads, so production's streaming timing matters.
+- **Leading hypothesis, unproved:** `src/app/[locale]/layout.tsx` has an async
+  `generateMetadata`, so every page streams its metadata into the body for hoisting into `<head>`.
+  A race there would be timing-dependent and page-independent, which is what is observed. First
+  test: `htmlLimitedBots: /.*/` in `next.config.ts` (blocking metadata for every agent) and a few
+  hundred sweep loads.
+- **Consequence for the harness:** §9 stays strict, so a full run can fail on this once or
+  twice until it is fixed. That is the defect showing, not a flaky check.
+
 ---
 
 ### P1 — PRODUCTION STABILITY
@@ -906,6 +958,19 @@ own access log.
 
 ## Decisions taken this session
 
+**2026-09-19**
+
+| Decision | Outcome |
+|---|---|
+| Fix transport failures once, in the shared form layer | One guard (`useGuardedAction` / `guardAction`) covers all 23 `ActionForm` forms and the four callers outside it, instead of a `try` in each form |
+| Guard only after hydration | Handing `useActionState` a client function makes React render `action="javascript:throw…"` and every form stops working without JavaScript. The raw Server Action serves the first render; proved by a native POST with JavaScript disabled |
+| Say "cannot tell whether it was recorded", not "nothing was saved" | `ERR_NETWORK_CHANGED` can land after the server committed. The copy says what the screen actually knows |
+| Correct two `workflow.mjs` assertions instead of seeding data to satisfy them | Page 1 of a queue with 813 waiting files, and a global orphan count carrying twenty firms from 2 September. Both now ask about the run itself; `database.mjs` still owns the global property |
+| Leave React #418 open (P0.20) | Predates this work, recoverable, 1 load in 45, production-only. A cause was hypothesised, not proved, and a guess is not a fix |
+| Do not commit `docs/presentation/` | Untracked before this session, 8.7 MB of media not produced here. Left for its owner |
+
+**2026-09-12**
+
 | Decision | Outcome |
 |---|---|
 | Commit the 2026-09-09/10 work rather than redo it | The shutdown left two sessions' work uncommitted but complete. Verified against the gates first — 198 tests, 97 browser checks — then committed as it stood |
@@ -926,3 +991,4 @@ own access log.
 | 2026-09-09 | Password reveal on all three credential screens, with an RTL padding bug found in a screenshot and now guarded. Queue paging proved to row 814. The appointment harness was silently skipping the booking it existed to prove; it now cancels, books, and finds the result in the Authority's diary. Production deployment unblocked one layer: `npm ci` had been failing on a stale lockfile. 198 tests, 96 browser checks. |
 | 2026-09-10 | The live server established as stale from the outside, without touching it. Two browser-harness failures found to be the harness rather than the product. |
 | 2026-09-12 | Resumed after a shutdown that left two sessions' work uncommitted. Verified it rather than redoing it: 198 tests, `npm run ci` exit 0. Live server re-proved stale and the probe made repeatable. Three harness defects fixed — a timeout set on one page out of five, budgets losing a race against a 122-second compile, and a run that aborted four sections early. **97 browser checks, 0 failed**, against a production build. Supabase established as not required. Work committed and pushed. |
+| 2026-09-19 | `TypeError: Failed to fetch` on the entity step was a dropped connection, and every form answered one by crashing into the route error boundary and losing what was typed. Fixed once, in the shared form layer, without costing the no-JavaScript path (P0.19). New browser sections: four transport failures on a real form, and every one of the 28 demo accounts through every screen of its own navigation. That sweep found a pre-existing, intermittent React #418 in production builds (P0.20), recorded, not fixed. `routes.mjs` 142/142, `workflow.mjs` 82/82 after two assertion corrections, `database.mjs` 29/29, audit chain intact. Running `workflow.mjs` locally left two ACTIVE files on `nile@`, permanently. |

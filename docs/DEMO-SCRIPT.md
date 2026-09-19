@@ -241,7 +241,11 @@ should happen. Someone who has never seen the code can read this aloud.
 
 **Account:** `nile@osool.test`
 
-12. **Sign in and open the application,** then **Appointment**.
+12. **Sign in and open the application,** then **Appointment**. If the portal
+    lists more than one file, open the one whose card says it is **waiting to be
+    booked in**. `scripts/qa/workflow.mjs` runs its end-to-end walk as this firm,
+    and every run leaves an `ACTIVE` file behind that cannot be removed (rule 2).
+    On the local database there are two, from 19 September.
 
 13. **Read the calendar.** Every open period is listed with **places left**, so a
     nearly-full morning is distinguishable from an empty one. Periods that are
