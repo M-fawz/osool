@@ -4,7 +4,11 @@ import * as React from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/i18n/navigation'
 import { cn } from '@/lib/cn'
-import { setDeclarationAction } from '@/app/[locale]/application/actions'
+import { setDeclarationAction, type StepResult } from '@/app/[locale]/application/actions'
+import { useErrorText } from '@/components/forms/form-state'
+import { RefusalNotice } from '@/components/forms/refusal-notice'
+import { UnconfirmedNotice } from '@/components/forms/unconfirmed-notice'
+import { unconfirmed, type Unconfirmed } from '@/lib/actions/unconfirmed'
 import { Button } from '@/components/ui/button'
 import { Field, Input } from '@/components/ui/form'
 import { Notice } from '@/components/ui/notice'
@@ -33,7 +37,16 @@ import { Check, Icon } from '@/components/ui/icon'
  * Declaration 10 is not a yes/no — REQ-REG-040 item 10 offers two lawful
  * answers — so it renders as a choice with a named employer, not as a checkbox
  * an honest public employee would have to lie to tick.
+ *
+ * Each post's answer is read and drawn under the declaration it belongs to.
+ * Before, it was awaited and discarded: a refusal left the declaration looking
+ * exactly as unanswered as before, and a dropped connection surfaced as nothing
+ * at all — the applicant pressed "I declare", the spinner stopped, and the
+ * screen gave no sign that the assertion had not been recorded.
  */
+
+/** Why the last post of one declaration did not record it. */
+type DeclarationFailure = Exclude<StepResult, { ok: true }> | Unconfirmed
 
 export interface DeclarationView {
   key: string
@@ -64,6 +77,9 @@ export function DeclarationsStep({
   const t = useTranslations('apply')
   const router = useRouter()
   const [pendingKey, setPendingKey] = React.useState<string | null>(null)
+  const [failure, setFailure] = React.useState<{ key: string; outcome: DeclarationFailure } | null>(
+    null,
+  )
 
   const affirmed = groups
     .flatMap((g) => g.items)
@@ -72,9 +88,13 @@ export function DeclarationsStep({
   const record = React.useCallback(
     async (input: { declarationKey: string; affirmed: boolean; qualification?: string }) => {
       setPendingKey(input.declarationKey)
+      setFailure(null)
       try {
-        await setDeclarationAction({ applicationId, ...input })
-        router.refresh()
+        const result = await setDeclarationAction({ applicationId, ...input })
+        if (result.ok) router.refresh()
+        else setFailure({ key: input.declarationKey, outcome: result })
+      } catch (error) {
+        setFailure({ key: input.declarationKey, outcome: unconfirmed(error) })
       } finally {
         setPendingKey(null)
       }
@@ -100,6 +120,7 @@ export function DeclarationsStep({
                   key={item.key}
                   item={item}
                   busy={pendingKey === item.key}
+                  failure={failure?.key === item.key ? failure.outcome : null}
                   onRecord={record}
                 />
               ) : (
@@ -107,6 +128,7 @@ export function DeclarationsStep({
                   key={item.key}
                   item={item}
                   busy={pendingKey === item.key}
+                  failure={failure?.key === item.key ? failure.outcome : null}
                   onRecord={record}
                 />
               ),
@@ -126,9 +148,11 @@ export function DeclarationsStep({
 
 function DeclarationBody({
   item,
+  failure,
   children,
 }: {
   item: DeclarationView
+  failure: DeclarationFailure | null
   children: React.ReactNode
 }) {
 
@@ -144,6 +168,7 @@ function DeclarationBody({
         <p className="min-w-0 flex-1 text-base leading-relaxed text-ink">{item.text}</p>
       </div>
       <div className="mt-3 ps-7">{children}</div>
+      {failure ? <DeclarationFailureNotice failure={failure} /> : null}
       {item.record?.affirmed ? (
         <p className="mt-2 flex flex-wrap items-center gap-1.5 ps-7 text-xs text-ink-faint">
           <Icon as={Check} size="xs" className="text-confirmed" />
@@ -157,17 +182,19 @@ function DeclarationBody({
 function SimpleDeclaration({
   item,
   busy,
+  failure,
   onRecord,
 }: {
   item: DeclarationView
   busy: boolean
+  failure: DeclarationFailure | null
   onRecord: (input: { declarationKey: string; affirmed: boolean }) => void
 }) {
   const t = useTranslations('apply')
   const affirmed = item.record?.affirmed ?? false
 
   return (
-    <DeclarationBody item={item}>
+    <DeclarationBody item={item} failure={failure}>
       {affirmed ? (
         <Status tone="confirmed">{t('declarationAffirmed')}</Status>
       ) : (
@@ -188,10 +215,12 @@ function SimpleDeclaration({
 function QualifiedDeclaration({
   item,
   busy,
+  failure,
   onRecord,
 }: {
   item: DeclarationView
   busy: boolean
+  failure: DeclarationFailure | null
   onRecord: (input: { declarationKey: string; affirmed: boolean; qualification?: string }) => void
 }) {
   const t = useTranslations('apply')
@@ -202,7 +231,7 @@ function QualifiedDeclaration({
   const answered = item.record !== null && (item.record.affirmed || Boolean(item.record.qualification))
 
   return (
-    <DeclarationBody item={item}>
+    <DeclarationBody item={item} failure={failure}>
       <fieldset className="min-w-0 border-0 p-0">
         <legend className="mb-2 text-sm font-medium text-ink-muted">{t('decl10Choice')}</legend>
 
@@ -259,6 +288,29 @@ function QualifiedDeclaration({
         ) : null}
       </fieldset>
     </DeclarationBody>
+  )
+}
+
+function DeclarationFailureNotice({ failure }: { failure: DeclarationFailure }) {
+  const errorText = useErrorText()
+
+  return (
+    <div className="mt-3 ps-7">
+      {failure.kind === 'unconfirmed' ? (
+        <UnconfirmedNotice outcome={failure} />
+      ) : failure.kind === 'refused' ? (
+        <RefusalNotice violation={failure.violation} />
+      ) : (
+        // Validation: the only field typed here is the employer's name on
+        // declaration 10, and it sits outside any ActionForm, so its message is
+        // drawn here rather than under the field.
+        <Notice tone="blocking" live>
+          {Object.entries(failure.errors).map(([field, key]) => (
+            <p key={field}>{errorText(key)}</p>
+          ))}
+        </Notice>
+      )}
+    </div>
   )
 }
 

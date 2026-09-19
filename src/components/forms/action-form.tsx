@@ -1,16 +1,20 @@
 'use client'
 
 import * as React from 'react'
-import { useLocale, useTranslations } from 'next-intl'
+import { useTranslations } from 'next-intl'
 // The locale-aware pair, never next/navigation's: `usePathname` here returns
 // the path *without* the locale prefix, which is exactly what a comparison
 // against an action's `next` needs.
 import { usePathname, useRouter } from '@/i18n/navigation'
 import { cn } from '@/lib/cn'
 import { Button } from '@/components/ui/button'
-import { BlockedAction } from '@/components/ui/notice'
 import type { RuleViolation } from '@/lib/rules/violation'
+import type { Unconfirmed } from '@/lib/actions/unconfirmed'
 import { ActionFormContext } from './form-state'
+import { RefusalNotice } from './refusal-notice'
+import { restore } from './restore'
+import { UnconfirmedNotice } from './unconfirmed-notice'
+import { useGuardedAction } from './use-guarded-action'
 
 export { useActionPending, useFieldError } from './form-state'
 
@@ -30,7 +34,7 @@ export type ActionOutcome =
 /**
  * The machinery every form in this product shares.
  *
- * Five jobs, and each one is here so that no step has to solve it again:
+ * Six jobs, and each one is here so that no step has to solve it again:
  *
  *   · run the Server Action through `useActionState`, so a step keeps working
  *     with JavaScript disabled and the button reports its own busy state;
@@ -41,7 +45,8 @@ export type ActionOutcome =
  *   · stay busy until the next screen is actually on the screen (below);
  *   · render a refusal as the four-part notice rather than as a red line,
  *     because a refusal from the rules engine is a legal finding and must not
- *     look like a typo.
+ *     look like a typo;
+ *   · **survive a request that never comes back** (below).
  *
  * ── Why the values have to be restored by hand ─────────────────────────────
  *
@@ -64,6 +69,18 @@ export type ActionOutcome =
  * cold serverless start that window is several seconds, and on the *first*
  * application pressing twice used to create two firms. `useTransition` around
  * the push holds the busy state until the destination has rendered.
+ *
+ * ── Why a dropped connection is an outcome and not a crash ─────────────────
+ *
+ * A Server Action is a `fetch`, and when the network drops mid-save the call
+ * rejects. `useActionState` rethrows a rejection during render, so it went to
+ * the route error boundary — which replaced the whole step, typed values and
+ * all, with a notice about an "unexpected fault". A broker on the entity step
+ * lost seventeen fields to a Wi-Fi change that way (`net::ERR_NETWORK_CHANGED`,
+ * `TypeError: Failed to fetch`). `useGuardedAction` catches the rejection and
+ * hands back an `Unconfirmed` outcome instead, which is restored and scrolled
+ * to exactly like a refusal. See src/lib/actions/unconfirmed.ts for the three
+ * reasons it distinguishes and for what it deliberately lets through.
  */
 
 export function ActionForm({
@@ -101,12 +118,13 @@ export function ActionForm({
   onSuccess?: () => void
 }) {
   const t = useTranslations('apply')
-  const tBlocked = useTranslations('blocked')
-  const locale = useLocale() as 'ar' | 'en'
   const router = useRouter()
   const pathname = usePathname()
 
-  const [state, formAction, pending] = React.useActionState(action, null)
+  const [state, formAction, pending] = React.useActionState<
+    ActionOutcome | Unconfirmed | null,
+    FormData
+  >(useGuardedAction(action), null)
   const [exitAfterSave, setExitAfterSave] = React.useState(false)
   const [navigating, startNavigation] = React.useTransition()
 
@@ -162,6 +180,7 @@ export function ActionForm({
 
   const errors = state && !state.ok && state.kind === 'validation' ? state.errors : {}
   const violation = state && !state.ok && state.kind === 'refused' ? state.violation : null
+  const unanswered = state && !state.ok && state.kind === 'unconfirmed' ? state : null
   const busy = pending || navigating
 
   return (
@@ -176,21 +195,9 @@ export function ActionForm({
         <input type="hidden" name="applicationId" value={applicationId} />
 
         <div ref={noticeRef}>
-          {violation ? (
-            <BlockedAction
-              what={locale === 'ar' ? violation.ar.blocked : violation.en.blocked}
-              why={locale === 'ar' ? violation.ar.why : violation.en.why}
-              nextStep={locale === 'ar' ? violation.ar.nextStep : violation.en.nextStep}
-              whoToAsk={locale === 'ar' ? violation.ar.whoToAsk : violation.en.whoToAsk}
-              legalSource={violation.legalSource}
-              headings={{
-                what: tBlocked('whatHeading'),
-                why: tBlocked('whyHeading'),
-                next: tBlocked('nextHeading'),
-                who: tBlocked('whoHeading'),
-              }}
-            />
-          ) : null}
+          {violation ? <RefusalNotice violation={violation} /> : null}
+
+          {unanswered ? <UnconfirmedNotice outcome={unanswered} /> : null}
 
           {/* The summary that says a refusal happened at all. Without it, a
               form whose only faulty field is below the fold answers a press of
@@ -322,38 +329,4 @@ function samePath(destination: string, current: string): boolean {
   const strip = (value: string) =>
     value.split('?')[0]!.replace(/^\/(ar|en)(?=\/|$)/, '').replace(/\/$/, '')
   return strip(destination) === strip(current)
-}
-
-/**
- * Write a submitted `FormData` back over a form React has just reset.
- *
- * File inputs are skipped — a browser will not let a value be assigned to one,
- * and the upload step does not use this component. `applicationId` and React's
- * own `$ACTION_*` fields are skipped because they are already correct and
- * writing to them would be meddling with the action's own plumbing.
- */
-function restore(form: HTMLFormElement | null, data: FormData | null) {
-  if (!form || !data) return
-
-  const values = new Map<string, string[]>()
-  for (const [name, value] of data.entries()) {
-    if (typeof value !== 'string') continue
-    values.set(name, [...(values.get(name) ?? []), value])
-  }
-
-  for (const element of Array.from(form.elements)) {
-    const control = element as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    const name = control.name
-    if (!name || name.startsWith('$ACTION') || name === 'applicationId') continue
-    if (control instanceof HTMLInputElement && control.type === 'file') continue
-
-    const submittedValues = values.get(name)
-
-    if (control instanceof HTMLInputElement && (control.type === 'checkbox' || control.type === 'radio')) {
-      control.checked = Boolean(submittedValues?.includes(control.value))
-      continue
-    }
-
-    if (submittedValues?.[0] !== undefined) control.value = submittedValues[0]
-  }
 }

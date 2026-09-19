@@ -1,10 +1,12 @@
 'use client'
 
 import * as React from 'react'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { Link } from '@/i18n/navigation'
 import { cn } from '@/lib/cn'
 import { ActionForm } from '@/components/forms/action-form'
+import { UnconfirmedNotice } from '@/components/forms/unconfirmed-notice'
+import { useGuardedAction } from '@/components/forms/use-guarded-action'
 import { Button } from '@/components/ui/button'
 import { Field, Select, Textarea } from '@/components/ui/form'
 import { Status } from '@/components/ui/status'
@@ -261,7 +263,8 @@ export function SignalCard({
 
 /** Claiming a signal, without disposing of it. */
 function TakeForm({ signalId, label }: { signalId: string; label: string }) {
-  const [state, formAction, pending] = React.useActionState(takeSignalAction, null)
+  const locale = useLocale() as 'ar' | 'en'
+  const [state, formAction, pending] = React.useActionState(useGuardedAction(takeSignalAction), null)
 
   return (
     <form action={formAction}>
@@ -270,7 +273,10 @@ function TakeForm({ signalId, label }: { signalId: string; label: string }) {
         {label}
       </Button>
       {state && !state.ok && state.kind === 'refused' ? (
-        <p className="mt-1 text-xs text-blocking">{state.violation.en.blocked}</p>
+        <p className="mt-1 text-xs text-blocking">{state.violation[locale].blocked}</p>
+      ) : null}
+      {state && !state.ok && state.kind === 'unconfirmed' ? (
+        <UnconfirmedNotice outcome={state} className="mt-2" />
       ) : null}
     </form>
   )

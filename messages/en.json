@@ -272,7 +272,14 @@
     "passwordTooLong": "The password is too long.",
     "tradeNameArRequired": "Enter the trade name in Arabic.",
     "governorateRequired": "Select a governorate.",
-    "addressRequired": "Enter the head office address."
+    "addressRequired": "Enter the head office address.",
+    "unconfirmedTitle": "The register has not confirmed this action.",
+    "unconfirmedWhyConnection": "The connection to the register was lost before it answered, so this screen cannot tell whether anything was recorded.",
+    "unconfirmedNextConnection": "Check your connection, then press the button again — what you entered is still on this screen. To check first what was recorded, open this page in a new tab.",
+    "unconfirmedWhyOutdated": "The register was updated while this screen was open, and this screen no longer matches it. Nothing was recorded.",
+    "unconfirmedNextOutdated": "Note down what you entered here, then reload the page and enter it again.",
+    "unconfirmedWhyFault": "The register met an unexpected fault while handling this request.",
+    "unconfirmedNextFault": "Press the button again — what you entered is still on this screen."
   },
   "portal": {
     "title": "My applications",

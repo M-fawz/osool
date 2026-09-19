@@ -3,6 +3,10 @@
 import * as React from 'react'
 import { Link } from '@/i18n/navigation'
 import { ActionFormContext } from '@/components/forms/form-state'
+import { UnconfirmedNotice } from '@/components/forms/unconfirmed-notice'
+import { restore } from '@/components/forms/restore'
+import { useGuardedAction } from '@/components/forms/use-guarded-action'
+import type { Unconfirmed } from '@/lib/actions/unconfirmed'
 import { Button } from '@/components/ui/button'
 import { Field, Input, PasswordInput, Select } from '@/components/ui/form'
 import { Notice } from '@/components/ui/notice'
@@ -32,10 +36,25 @@ export function SignUpForm({
   labels: Record<string, string>
   governorates: Array<{ value: string; label: string }>
 }) {
-  const [state, formAction, pending] = React.useActionState<SignUpOutcome | null, FormData>(
-    signUpBroker,
-    null,
-  )
+  // Guarded for the reason ActionForm is: a dropped connection used to reach
+  // the route error boundary and take the whole form with it.
+  const [state, formAction, pending] = React.useActionState<
+    SignUpOutcome | Unconfirmed | null,
+    FormData
+  >(useGuardedAction(signUpBroker), null)
+
+  // React 19 resets the form once the action settles, refused or not. The
+  // snapshot is what lets a refusal — or a request that never came back — leave
+  // every field as it was typed. See ActionForm for the long version.
+  const formRef = React.useRef<HTMLFormElement>(null)
+  const submitted = React.useRef<FormData | null>(null)
+  const snapshot = React.useCallback((event: React.FormEvent<HTMLFormElement>) => {
+    submitted.current = new FormData(event.currentTarget)
+  }, [])
+
+  React.useEffect(() => {
+    if (state && !state.ok) restore(formRef.current, submitted.current)
+  }, [state])
 
   const errors = state && !state.ok && state.kind === 'validation' ? state.errors : {}
 
@@ -79,7 +98,17 @@ export function SignUpForm({
 
   return (
     <ActionFormContext.Provider value={{ errors, pending, inForm: true }}>
-      <form action={formAction} className="space-y-5" noValidate>
+      <form
+        ref={formRef}
+        action={formAction}
+        onSubmit={snapshot}
+        className="space-y-5"
+        noValidate
+      >
+        {state && !state.ok && state.kind === 'unconfirmed' ? (
+          <UnconfirmedNotice outcome={state} />
+        ) : null}
+
         {state && !state.ok && state.kind === 'refused' ? (
           <Notice tone="blocking" title={labels.refusedTitle!} live>
             <p>{labels.refusedLead!}</p>

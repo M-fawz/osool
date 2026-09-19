@@ -64,14 +64,25 @@ interface CredentialForm {
   source: string
 }
 
+/**
+ * A `<form>` tag submitted by its `onSubmit` handler alone.
+ *
+ * `<form action={…}>` is a Server Action form. React posts those, and they
+ * work without JavaScript by design, so they are not at risk here — even when
+ * they also carry an `onSubmit`, as the sign-up form does to snapshot its
+ * fields before React 19 resets them. The risk is precisely `onSubmit` with no
+ * `action`, so that is what is matched, tag by tag.
+ */
+function isHandlerOnlyForm(tag: string): boolean {
+  return /\bonSubmit=/.test(tag) && !/\baction=/.test(tag)
+}
+
 /** Every client form that collects a credential and handles its own submit. */
 function credentialForms(): CredentialForm[] {
   return tsxFilesUnder(APP)
     .map((path) => ({ name: relative(process.cwd(), path), source: readFileSync(path, 'utf8') }))
     .filter(({ source }) => source.includes('<form') && SENSITIVE.test(source))
-    // `<form action={…}>` is a Server Action form. React posts those, and they
-    // work without JavaScript by design, so they are not at risk here.
-    .filter(({ source }) => /<form\b[^>]*\bonSubmit=/s.test(source))
+    .filter(({ source }) => (source.match(/<form\b[^>]*>/gs) ?? []).some(isHandlerOnlyForm))
 }
 
 const FORMS = credentialForms()
@@ -89,7 +100,7 @@ describe('forms that collect a credential', () => {
       const tags = source.match(/<form\b[^>]*>/gs) ?? []
       expect(tags.length).toBeGreaterThan(0)
       for (const tag of tags) {
-        if (!/\bonSubmit=/.test(tag)) continue
+        if (!isHandlerOnlyForm(tag)) continue
         expect(tag).toMatch(/\bmethod="post"/)
       }
     },

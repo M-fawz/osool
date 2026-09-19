@@ -4,7 +4,12 @@ import * as React from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/i18n/navigation'
 import { Button, Spinner } from '@/components/ui/button'
+import { RefusalNotice } from '@/components/forms/refusal-notice'
+import { UnconfirmedNotice } from '@/components/forms/unconfirmed-notice'
+import { guardAction } from '@/lib/actions/unconfirmed'
 import { recordAttendanceAction } from '@/app/[locale]/appointments/actions'
+
+const record = guardAction(recordAttendanceAction)
 
 /**
  * Marking somebody present, at the counter.
@@ -19,25 +24,34 @@ import { recordAttendanceAction } from '@/app/[locale]/appointments/actions'
  * are one click apart, and a mistaken mark is corrected by an officer with the
  * audit trail showing both entries — which is a better record than a dialogue
  * that makes the common case slower.
+ *
+ * The answer is read, not assumed. A refusal is drawn under the buttons, and so
+ * is a request that never came back: an error thrown inside an async
+ * transition goes to the route error boundary, and a dropped connection at the
+ * counter used to take the whole appointments list down with it.
  */
 export function AttendanceControls({ appointmentId }: { appointmentId: string }) {
   const t = useTranslations('appointments')
   const router = useRouter()
   const [pending, startTransition] = React.useTransition()
   const [busy, setBusy] = React.useState<'yes' | 'no' | null>(null)
+  const [outcome, setOutcome] = React.useState<Awaited<ReturnType<typeof record>> | null>(null)
 
-  const record = (attended: 'yes' | 'no') => {
+  const mark = (attended: 'yes' | 'no') => {
     setBusy(attended)
+    setOutcome(null)
     const formData = new FormData()
     formData.set('appointmentId', appointmentId)
     formData.set('attended', attended)
 
     startTransition(async () => {
-      await recordAttendanceAction(null, formData)
+      const result = await record(null, formData)
+      setOutcome(result)
       // The row's status is server-rendered, so a refresh is what shows the
       // change. Kept inside the transition so the button stays busy until the
-      // new markup has actually arrived.
-      router.refresh()
+      // new markup has actually arrived. Not after a connection failure: the
+      // refresh would fail the same way.
+      if (result.ok || result.kind !== 'unconfirmed') router.refresh()
       setBusy(null)
     })
   }
@@ -49,7 +63,7 @@ export function AttendanceControls({ appointmentId }: { appointmentId: string })
         size="sm"
         variant="secondary"
         disabled={pending}
-        onClick={() => record('yes')}
+        onClick={() => mark('yes')}
       >
         {busy === 'yes' ? <Spinner className="me-1.5" /> : null}
         {t('markAttended')}
@@ -59,11 +73,18 @@ export function AttendanceControls({ appointmentId }: { appointmentId: string })
         size="sm"
         variant="ghost"
         disabled={pending}
-        onClick={() => record('no')}
+        onClick={() => mark('no')}
       >
         {busy === 'no' ? <Spinner className="me-1.5" /> : null}
         {t('markMissed')}
       </Button>
+
+      {outcome && !outcome.ok && outcome.kind === 'refused' ? (
+        <RefusalNotice violation={outcome.violation} className="mt-2 basis-full" />
+      ) : null}
+      {outcome && !outcome.ok && outcome.kind === 'unconfirmed' ? (
+        <UnconfirmedNotice outcome={outcome} className="mt-2 basis-full" />
+      ) : null}
     </div>
   )
 }
