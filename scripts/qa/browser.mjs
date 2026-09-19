@@ -813,10 +813,28 @@ const run = async () => {
   await signIn(brokerPage, 'nile@osool.test', PASSWORD)
   await brokerPage.goto(`${BASE}/en/application`, { waitUntil: 'networkidle' })
 
+  /*
+   * The SUBMITTED file by what its card says, not the first card.
+   *
+   * `scripts/qa/workflow.mjs` drives its end-to-end run as this same firm, and
+   * every run adds an application that it walks to ACTIVE — records rule 2 keeps
+   * for ever. After two such runs `nile` had three files and the first card was
+   * an ACTIVE one with nothing to book, so the slots "disappeared". The seeded
+   * file is the one whose card says it is waiting to be booked in.
+   */
   const appHref = await brokerPage
-    .locator('a[href*="/application/"]')
-    .first()
-    .getAttribute('href')
+    .locator('main a[href*="/application/"]')
+    .evaluateAll((links) => {
+      for (const link of links) {
+        // Climb to the largest ancestor that is still this one card.
+        let card = link.parentElement
+        while (card?.parentElement?.querySelectorAll('a[href*="/application/"]').length === 1) {
+          card = card.parentElement
+        }
+        if (/waiting to be booked in/i.test(card?.textContent ?? '')) return link.getAttribute('href')
+      }
+      return null
+    })
     .catch(() => null)
 
   const appId = appHref?.match(/\/application\/([^/?#]+)/)?.[1] ?? null
@@ -1107,6 +1125,306 @@ const run = async () => {
   )
 
   await phone.close()
+
+  // ── 8. The connection drops in the middle of a save ────────────────────
+  heading('8. A dropped connection mid-save')
+
+  /*
+   * Reported from the entity step as `net::ERR_NETWORK_CHANGED` →
+   * `TypeError: Failed to fetch at fetchServerAction` → "[osool] unhandled
+   * route error": the rejected Server Action call reached the route error
+   * boundary, which replaced the step and every field typed into it.
+   *
+   * The report's own error was `ERR_NETWORK_CHANGED`, which happens while the
+   * browser still believes it is online — so the first scenario aborts the
+   * request with `navigator.onLine` true, and `setOffline` is only one of four.
+   * Each fails the request the way the browser would: the same `TypeError`
+   * from the same `fetch`, or the same response Next's client would receive.
+   *
+   * Written to change nothing. Every broken press writes nothing, and the last,
+   * online press is answered with a *validation* refusal — the demo broker's
+   * draft has no other entity fields filled — and a refused save writes nothing
+   * either. What that press proves is that the form is still wired to the
+   * server after the failures, which a notice alone would not.
+   */
+  {
+    const dropContext = await newContext(browser)
+    const drop = await dropContext.newPage()
+    const dropErrors = []
+    watchConsole(drop, dropErrors)
+
+    try {
+      await signIn(drop, 'broker@osool.test', PASSWORD)
+      await drop.goto(`${BASE}/en/application`, { waitUntil: 'networkidle' })
+      const hrefs = await drop
+        .locator('main a[href*="/application/"]')
+        .evaluateAll((links) => links.map((a) => a.getAttribute('href')))
+      const id = hrefs.map((h) => h?.match(/\/application\/([^/]+)\//)?.[1]).find(Boolean)
+      if (!id) throw new Error('the demo broker has no application to open')
+
+      await drop.goto(`${BASE}/en/application/${id}/entity`, { waitUntil: 'networkidle' })
+      // Hydrated, not merely painted: before React attaches, the button posts
+      // natively and this would be testing the no-JavaScript path instead.
+      await drop.waitForFunction(
+        () => {
+          const form = document.querySelector('main form')
+          return Boolean(form && Object.keys(form).some((k) => k.startsWith('__react')))
+        },
+        null,
+        { timeout: 30_000 },
+      )
+
+      const probe = `منشأة انقطاع ${Date.now().toString(36)}`
+      await drop.fill('input[name="tradeNameAr"]', probe)
+
+      // Only the Server Action POST is broken; the page's own loads are not.
+      const onAction = (respond) => (route) =>
+        route.request().method() === 'POST' && route.request().headers()['next-action']
+          ? respond(route)
+          : route.fallback()
+      const unroute = () => drop.unrouteAll({ behavior: 'ignoreErrors' })
+
+      /*
+       * Four ways for the call not to come back, ordered so that no two in a
+       * row expect the same reason: waiting for the expected reason is then
+       * proof that a *new* answer arrived, not that the last notice lingered.
+       */
+      const SCENARIOS = [
+        {
+          label: 'the connection resets mid-request while the browser is online',
+          expect: 'connection',
+          shot: 'connection-reset',
+          breakIt: () => drop.route('**/*', onAction((r) => r.abort('connectionreset'))),
+          mend: unroute,
+        },
+        {
+          label: 'the server answers 500',
+          expect: 'fault',
+          shot: 'connection-server-500',
+          breakIt: () =>
+            drop.route(
+              '**/*',
+              onAction((r) =>
+                r.fulfill({ status: 500, contentType: 'text/plain', body: 'Internal Server Error' }),
+              ),
+            ),
+          mend: unroute,
+        },
+        {
+          label: 'the browser goes offline',
+          expect: 'connection',
+          shot: 'connection-offline',
+          breakIt: () => dropContext.setOffline(true),
+          mend: () => dropContext.setOffline(false),
+        },
+        {
+          label: 'the server no longer knows the action, as after a redeploy',
+          expect: 'outdated',
+          shot: 'connection-outdated',
+          breakIt: () =>
+            drop.route(
+              '**/*',
+              onAction((r) =>
+                r.fulfill({
+                  status: 404,
+                  headers: { 'x-nextjs-action-not-found': '1' },
+                  contentType: 'text/plain',
+                  body: 'Server action not found.',
+                }),
+              ),
+            ),
+          mend: unroute,
+        },
+      ]
+
+      for (const scenario of SCENARIOS) {
+        const errorsBefore = dropErrors.length
+        await scenario.breakIt()
+        await drop.getByRole('button', { name: 'Save and continue' }).click()
+        const answered = await drop
+          .waitForFunction(
+            (expected) =>
+              document.querySelector('[data-unconfirmed]')?.getAttribute('data-unconfirmed') ===
+              expected,
+            scenario.expect,
+            { timeout: 20_000 },
+          )
+          .then(() => true)
+          .catch(() => false)
+        await shot(drop, scenario.shot)
+        await scenario.mend()
+
+        const body = await drop.locator('body').innerText()
+        const crashed = dropErrors
+          .slice(errorsBefore)
+          .find((e) => /unhandled route error|PAGEERROR/i.test(e))
+        check(
+          `${scenario.label}: an inline "${scenario.expect}" notice, in four parts, and no crash`,
+          answered &&
+            !crashed &&
+            !body.includes('This page could not be shown') &&
+            [/what is blocked/i, /why/i, /what to do next/i, /who to ask/i].every((h) => h.test(body)),
+          crashed?.slice(0, 120) ?? (answered ? 'notice incomplete' : 'no notice'),
+        )
+        check(
+          `${scenario.label}: what was typed is still in the field`,
+          (await drop.inputValue('input[name="tradeNameAr"]').catch(() => '')) === probe,
+        )
+      }
+
+      const answered = drop
+        .waitForResponse((r) => r.request().method() === 'POST' && r.url().startsWith(BASE), {
+          timeout: 30_000,
+        })
+        .catch(() => null)
+      await drop.getByRole('button', { name: 'Save and continue' }).click()
+      const response = await answered
+      await drop
+        .getByText(/needs? correcting before this can be saved/i)
+        .first()
+        .waitFor({ state: 'visible', timeout: 20_000 })
+        .catch(() => {})
+      await shot(drop, 'connection-restored')
+
+      check(
+        'back online, the same button reaches the server again',
+        response?.status() === 200 && (await drop.locator('[data-unconfirmed]').count()) === 0,
+        response ? `status ${response.status()}` : 'no response',
+      )
+      check(
+        'and the server answers it — a validation refusal, so nothing was written',
+        /needs? correcting before this can be saved/i.test(await drop.locator('body').innerText()),
+      )
+    } catch (error) {
+      check('a dropped connection mid-save', false, error.message.split('\n')[0].slice(0, 120))
+    } finally {
+      await dropContext.close()
+    }
+  }
+
+  // ── 9. Every demonstration account, every screen in its own navigation ──
+  heading('9. Every demonstration account')
+
+  /*
+   * Section 6 proves each *role* reaches its landing screen. This proves each
+   * *account* does, and then opens every screen that account's own navigation
+   * offers — and, for a broker, every step of its own application — failing on
+   * a page error, a 5xx, or the route error boundary. A refusal is not a
+   * failure here: `suspended@` and `inspector@` are refused by design, and the
+   * assertion is that the refusal is drawn rather than crashed into.
+   *
+   * The documented accounts only (docs/DEMO-SCRIPT.md). The `proof-*` accounts
+   * belong to the proof scripts and hold whatever state those left.
+   */
+  const OFFICIALS = [
+    'clerk', 'examiner', 'examiner2', 'reviewer', 'reviewer2', 'issuer', 'data', 'files',
+    'auditor', 'aml', 'analyst', 'inspector', 'suspended',
+  ].map((name) => `${name}@osool.test`)
+  const BROKERS = [
+    'broker', 'delta', 'nile', 'newcairo', 'haramain', 'mohandeseen', 'heliopolis',
+    'october', 'giza', 'maadi', 'zamalek', 'alex', 'shorouk', 'aswan',
+  ].map((name) => `${name}@osool.test`)
+  const EVERYONE = [ADMIN.email, ...OFFICIALS, ...BROKERS]
+
+  const sweepContext = await newContext(browser)
+  const sweep = await sweepContext.newPage()
+  const sweepErrors = []
+  watchConsole(sweep, sweepErrors)
+
+  /** Open one screen, and say what, if anything, went wrong on it. */
+  async function visit(path) {
+    const before = sweepErrors.length
+    const response = await sweep
+      .goto(`${BASE}${path}`, { waitUntil: 'networkidle' })
+      .catch((error) => error)
+    if (response instanceof Error) return `navigation failed: ${response.message.split('\n')[0]}`
+
+    // A route with a `loading.tsx` can still be showing it at `networkidle`
+    // under load: the first run read the inspector's dashboard as "blank" off
+    // the skeleton, and fifteen reloads afterwards were all complete. So the
+    // fallback is waited out — and a page that never leaves it is a fault.
+    const settled = await sweep
+      .waitForFunction(
+        () =>
+          ![...document.querySelectorAll('[role="status"]')].some((el) =>
+            /Loading…|جارٍ التحميل/.test(el.textContent ?? ''),
+          ),
+        null,
+        { timeout: 30_000 },
+      )
+      .then(() => true)
+      .catch(() => false)
+    if (!settled) return 'stuck on its loading screen for 30s'
+
+    const status = response?.status() ?? 0
+    const text = await sweep.locator('body').innerText().catch(() => '')
+    const thrown = sweepErrors.slice(before).find((e) => /PAGEERROR|unhandled route error/i.test(e))
+    if (status >= 500) return `HTTP ${status}`
+    if (text.includes('This page could not be shown') || text.includes('تعذّر عرض هذه الصفحة')) {
+      return 'route error boundary'
+    }
+    if (thrown) return thrown.slice(0, 120)
+    if (text.trim().length < 80) return `blank (${text.trim().length} chars)`
+    return null
+  }
+
+  for (const email of EVERYONE) {
+    await sweepContext.clearCookies()
+    const password = email === ADMIN.email ? ADMIN.password : PASSWORD
+    try {
+      await signIn(sweep, email, password)
+    } catch (error) {
+      check(`${email} signs in`, false, error.message.split('\n')[0].slice(0, 100))
+      continue
+    }
+
+    const landed = new URL(sweep.url()).pathname
+    const faults = []
+    const landingFault = await visit(landed)
+    if (landingFault) faults.push(`${landed}: ${landingFault}`)
+
+    // The account's own navigation, as its shell draws it.
+    const own = await sweep
+      .locator('nav a[href], header a[href]')
+      .evaluateAll((links) => links.map((a) => a.getAttribute('href')))
+    const paths = own
+      .filter((h) => h && h.startsWith('/') && !h.startsWith('//'))
+      .map((h) => h.split('#')[0])
+      .filter((h) => h && !/\/(login|signup|api)(\/|$)/.test(h))
+
+    // A broker's work is inside its application: every step of it.
+    if (BROKERS.includes(email)) {
+      await sweep.goto(`${BASE}/en/application`, { waitUntil: 'networkidle' }).catch(() => {})
+      const hrefs = await sweep
+        .locator('main a[href*="/application/"]')
+        .evaluateAll((links) => links.map((a) => a.getAttribute('href')))
+      const id = hrefs.map((h) => h?.match(/\/application\/([^/]+)\//)?.[1]).find(Boolean)
+      if (id) {
+        for (const step of [
+          'capacity', 'power-of-attorney', 'entity', 'category', 'contracts',
+          'documents', 'declarations', 'review',
+        ]) {
+          paths.push(`/en/application/${id}/${step}`)
+        }
+      }
+      paths.push('/en/appointments')
+    }
+
+    const screens = [...new Set(paths)].filter((p) => p !== landed)
+    for (const path of screens) {
+      const fault = await visit(path)
+      if (fault) faults.push(`${path}: ${fault}`)
+    }
+
+    check(
+      `${email} — landed on ${landed}, opened ${screens.length + 1} screens without a crash`,
+      faults.length === 0,
+      faults.slice(0, 3).join(' · '),
+    )
+    if (faults.length) await shot(sweep, `sweep-${email.split('@')[0]}`)
+  }
+
+  await sweepContext.close()
   await browser.close()
 
   // ── The verdict ────────────────────────────────────────────────────────

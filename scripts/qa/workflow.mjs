@@ -26,6 +26,11 @@
  *
  * Nothing here writes anything a demonstration would not write. It uses the
  * seeded demonstration accounts and creates one application.
+ *
+ * That application belongs to `nile@osool.test` and ends ACTIVE, and under
+ * rule 2 it stays for ever: every run adds another file to the firm the
+ * appointment demonstration is given as. Run it against a database whose demo
+ * you are prepared to see change. DEMO-SCRIPT.md part 3 says which card to open.
  */
 import { existsSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
@@ -337,6 +342,21 @@ async function main() {
     return
   }
 
+  // Counted before anything is pressed, so the check below can ask about *this*
+  // run. A long-lived database carries firms orphaned by runs that predate the
+  // row lock in `startApplicationAction` — the local one has twenty, all from
+  // 2 September — and a global count would fail every run for ever on history
+  // nothing here can change. Orphans as a standing property of the register are
+  // `database.mjs`'s question.
+  const orphanCount = async () =>
+    (
+      await q(
+        `select count(*)::int n from broker_entity e
+         where not exists (select 1 from "user" u where u."brokerEntityId" = e.id)`,
+      )
+    )[0]?.n ?? 0
+  const orphansBefore = await orphanCount()
+
   // ── 1. The broker's draft ────────────────────────────────────────────────
   step('1. Broker — a draft application')
 
@@ -396,11 +416,12 @@ async function main() {
     'a second draft appeared',
   )
 
-  const orphans = await q(
-    `select count(*)::int n from broker_entity e
-     where not exists (select 1 from "user" u where u."brokerEntityId" = e.id)`,
+  const orphansAfter = await orphanCount()
+  check(
+    'no firm was left without an account by this run',
+    orphansAfter === orphansBefore,
+    `${orphansAfter - orphansBefore} orphaned (${orphansBefore} from earlier runs)`,
   )
-  check('no firm was left without an account', (orphans[0]?.n ?? 0) === 0, `${orphans[0]?.n} orphaned`)
 
   const drafts = await q(
     `select count(*)::int n from application a
@@ -749,9 +770,24 @@ async function main() {
   step('6. Registry clerk — book the file in and assign it')
 
   const queue = await clerk.fetch('/en/intake')
-  const queueBody = await queue.text()
   check('the intake queue renders for the clerk', queue.status === 200)
-  check('the submitted file is in the clerk’s queue', queueBody.includes(applicationId), 'not listed')
+
+  /*
+   * Every page of it, not the first. The queue is oldest-first — first come,
+   * first served, which is right for a counter — so a file submitted a moment
+   * ago is on the *last* page. A register with more than fifty files waiting
+   * (the local one has 813) put it past page one and this reported a file the
+   * clerk could see, and went on to book in, as missing.
+   */
+  // Bounded by every application in the register, which is more than the
+  // queue can hold whatever statuses it shows; the loop stops at the file.
+  const everything = (await q(`select count(*)::int n from application`))[0]?.n ?? 0
+  let listedOn = 0
+  for (let page = 1; page <= Math.max(1, Math.ceil(everything / 200)) && !listedOn; page++) {
+    const body = await (await clerk.fetch(`/en/intake?page=${page}&pageSize=200`)).text()
+    if (body.includes(applicationId)) listedOn = page
+  }
+  check('the submitted file is in the clerk’s queue', listedOn > 0, 'not listed on any page')
 
   /*
    * The file has four addresses, and that is by design rather than by accident:
